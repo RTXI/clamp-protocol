@@ -37,38 +37,72 @@ constexpr std::string_view MODULE_NAME = "clamp-protocol";
 enum PARAMETER : Widgets::Variable::Id
 {
   // set parameter ids here
-  FIRST_PARAMETER = 0,
-  SECOND_PARAMETER,
-  THIRD_PARAMETER
+  INTERVAL_TIME = 0,
+  NUM_OF_TRIALS,
+  LIQUID_JUNCT_POTENTIAL,
+  TRIAL,
+  SEGMENT,
+  SWEEP,
+  TIME,
+  VOLTAGE_OUT
 };
 
 inline std::vector<Widgets::Variable::Info> get_default_vars()
 {
-  return {{PARAMETER::FIRST_PARAMETER,
-           "First Parameter Name",
-           "First Parameter Description",
+  return {{INTERVAL_TIME,
+           "Interval Time",
+           "Time allocated between intervals",
+           Widgets::Variable::DOUBLE_PARAMETER,
+           0.0},
+          {NUM_OF_TRIALS,
+           "Number of Trials",
+           "Number of times to apply the loaded protocol",
            Widgets::Variable::INT_PARAMETER,
            int64_t {0}},
-          {PARAMETER::SECOND_PARAMETER,
-           "Second Parameter Name",
-           "Second Parameter Description",
+          {LIQUID_JUNCT_POTENTIAL,
+           "Liquid Junct. Potential (mV)",
+           "(mV)",
            Widgets::Variable::DOUBLE_PARAMETER,
-           1.0},
-          {PARAMETER::THIRD_PARAMETER,
-           "Third Parameter Name",
-           "Third Parameter Description",
-           Widgets::Variable::UINT_PARAMETER,
-           uint64_t {1}}};
+           0.0},
+          {TRIAL,
+           "Trial",
+           "Number of the trial currently being run",
+           Widgets::Variable::STATE,
+           uint64_t {0}},
+          {SEGMENT,
+           "Segment",
+           "Number of the protocol segment being executed",
+           Widgets::Variable::STATE,
+           uint64_t {0}},
+          {SWEEP,
+           "Sweep",
+           "Sweep number in current segment",
+           Widgets::Variable::STATE,
+           uint64_t {0}},
+          {TIME,
+           "Time (ms)",
+           "Elapsed time for current trial",
+           Widgets::Variable::STATE,
+           uint64_t {0}},
+          {VOLTAGE_OUT,
+           "Voltage Out (V w/ LJP)",
+           "Voltage output (V)",
+           Widgets::Variable::STATE,
+           uint64_t {0}}};
 }
 
 inline std::vector<IO::channel_t> get_default_channels()
 {
-  return {{"First Channel Output Name",
-           "First Channel Output Description",
-           IO::OUTPUT},
-          {"First Channel Input Name",
-           "First Channel Input Description",
-           IO::INPUT}};
+  return {{
+              "Current In (A)",
+              "Applied current (A)",
+              IO::INPUT,
+          },
+          {
+              "Voltage Out (V w/ LJP)",
+              "Voltage output with liquid junction potential",
+              IO::OUTPUT,
+          }};
 }
 
 struct curve_token_t
@@ -169,7 +203,7 @@ class ClampProtocolWindow : public QWidget
   Q_OBJECT
 
 public:
-  ClampProtocolWindow(QWidget* /*, Panel * */);
+  explicit ClampProtocolWindow(QWidget* /*, Panel * */);
   void createGUI();
 
 private:
@@ -286,7 +320,7 @@ private:
 
   int currentSegmentNumber;
   QStringList ampModeList, stepTypeList;
-  
+
   QHBoxLayout *layout1, *layout4, *segmentSweepGroupLayout;
   QVBoxLayout *windowLayout, *layout3, *protocolDescriptionBoxLayout, *layout5,
       *segmentSummaryGroupLayout, *layout6;
@@ -399,6 +433,7 @@ class Component : public Widgets::Component
 public:
   explicit Component(Widgets::Plugin* hplugin);
   void execute() override;
+  void exec();
 
   // Additional functionality needed for RealTime computation is to be placed
   // here
