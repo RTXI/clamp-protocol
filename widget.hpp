@@ -119,83 +119,80 @@ struct curve_token_t
                           // sweeps = 1 for all segments
 };
 
-class ProtocolStep
-{  // Individual step within a protocol
-public:
-  ProtocolStep();
-  double retrieve(int);
+enum ampMode_t : int
+{
+  VOLTAGE = 0,
+  CURRENT
+};
 
-  enum ampMode_t
-  {
-    VOLTAGE,
-    CURRENT
-  } ampMode;
-  enum stepType_t
-  {
-    STEP,
-    RAMP,
-    TRAIN,
-    CURVE
-  } stepType;
-  double stepDuration;
-  double deltaStepDuration;
-  double delayBefore;
-  double delayAfter;
-  double holdingLevel1;
-  double deltaHoldingLevel1;
-  double holdingLevel2;
-  double deltaHoldingLevel2;
-  double pulseWidth;
-  int pulseRate;
+enum stepType_t : int
+{
+  STEP = 0,
+  RAMP,
+  TRAIN,
+  CURVE
+};
+
+// Individual step within a protocol
+struct ProtocolStep
+{
+  ampMode_t ampMode = VOLTAGE;
+  stepType_t stepType = STEP;
+  double stepDuration = 0;
+  double deltaStepDuration = 0;
+  double delayBefore = 0;
+  double delayAfter = 0;
+  double holdingLevel1 = 0;
+  double deltaHoldingLevel1 = 0;
+  double holdingLevel2 = 0;
+  double deltaHoldingLevel2 = 0;
+  double pulseWidth = 0;
+  int pulseRate = 0;
 };  // class ProtocolStep
 
-class ProtocolSegment
-{  // A segment within a protocol, made up of ProtocolSteps
-  friend class Protocol;
-
-public:
-  ProtocolSegment();
-
-private:
-  std::vector<ProtocolStep> segmentContainer;
-  int numSweeps;
+// A segment within a protocol, made up of ProtocolSteps
+struct ProtocolSegment
+{
+  std::vector<ProtocolStep> steps;
+  size_t numSweeps = 1;
 };
 
 class Protocol
 {
-  friend class ClampProtocolEditor;
-
 public:
   Protocol();
 
   // These should be private
-  ProtocolSegment getSegment(int);  // Return a segment
-  int numSegments();  // Number of segments in a protocol
-  int numSweeps(int);  // Number of sweeps in a segment
-  int segmentLength(
-      int,
-      double,
-      bool);  // Points in a segment (w/ or w/o sweeps), length / period
+  ProtocolSegment& getSegment(size_t seg_id);  // Return a segment
+  size_t numSegments();  // Number of segments in a protocol
+  size_t numSweeps(size_t seg_id);  // Number of sweeps in a segment
+  int segmentLength(size_t seg_id,
+                    double period,
+                    bool withSweeps);  // Points in a segment (w/ or w/o
+                                       // sweeps), length / period
   void setSweeps(int, int);  // Set sweeps for a segment
-  ProtocolStep getStep(int, int);  // Return step in a segment
-  int numSteps(int);  // Return number of steps in segment
+  ProtocolStep getStep(size_t segement,
+                       size_t step);  // Return step in a segment
+  size_t numSteps(size_t segment);  // Return number of steps in segment
   void toDoc();  // Convert protocol to QDomDocument
   void fromDoc(QDomDocument);  // Load protocol from a QDomDocument
   void clear();  // Clears container
   std::vector<std::vector<double>> run(
       double);  // Runs the protocol, returns a time and output vector
 
-  std::vector<ProtocolSegment> protocolContainer;
-  QDomDocument protocolDoc;
+  void addSegment();  // Add a segment to container
+  void deleteSegment(size_t seg_id);  // Delete a segment from container
+  void modifySegment(size_t seg_id, const ProtocolSegment& segment);
+  void addStep(size_t seg_id);  // Add a step to a segment in container
+  void deleteStep(size_t seg_id,
+                  size_t step_id);  // Delete a step from segment in container
+  void modifyStep(size_t seg_id, size_t step_id, const ProtocolStep& step);
 
 private:
-  int addSegment(int);  // Add a segment to container
-  int deleteSegment(int);  // Delete a segment from container
-  int addStep(int, int);  // Add a step to a segment in container
-  int deleteStep(int, int);  // Delete a step from segment in container
-
   QDomElement segmentToNode(QDomDocument&, int);
   QDomElement stepToNode(QDomDocument&, int, int);
+  QDomDocument protocolDoc;
+  std::vector<ProtocolSegment> segments;
 };  // class Protocol
 
 class ClampProtocolWindow : public QWidget
@@ -205,13 +202,6 @@ class ClampProtocolWindow : public QWidget
 public:
   explicit ClampProtocolWindow(QWidget* /*, Panel * */);
   void createGUI();
-
-private:
-  QHBoxLayout* frameLayout;
-  QSpacerItem* spacer;
-  QGridLayout* layout1;
-  QVBoxLayout* layout2;
-  QVBoxLayout* layout3;
 
 public slots:
   void addCurve(double*, curve_token_t);
@@ -242,23 +232,29 @@ private:
   QPixmap image0;
   QPixmap image1;
 
-  QFrame* frame;
-  QLabel* currentScaleLabel;
-  QComboBox* currentScaleEdit;
-  QSpinBox* currentY2Edit;
-  QComboBox* timeScaleEdit;
-  QSpinBox* timeX2Edit;
-  QSpinBox* currentY1Edit;
-  QLabel* timeScaleLabel;
-  QSpinBox* timeX1Edit;
-  QPushButton* setAxesButton;
-  QCheckBox* overlaySweepsCheckBox;
-  QCheckBox* plotAfterCheckBox;
-  QLabel* textLabel1;
-  QComboBox* colorByComboBox;
-  QPushButton* clearButton;
+  QHBoxLayout* frameLayout = nullptr;
+  QSpacerItem* spacer = nullptr;
+  QGridLayout* layout1 = nullptr;
+  QVBoxLayout* layout2 = nullptr;
+  QVBoxLayout* layout3 = nullptr;
 
-  QMdiSubWindow* subWindow;
+  QFrame* frame = nullptr;
+  QLabel* currentScaleLabel = nullptr;
+  QComboBox* currentScaleEdit = nullptr;
+  QSpinBox* currentY2Edit = nullptr;
+  QComboBox* timeScaleEdit = nullptr;
+  QSpinBox* timeX2Edit = nullptr;
+  QSpinBox* currentY1Edit = nullptr;
+  QLabel* timeScaleLabel = nullptr;
+  QSpinBox* timeX1Edit = nullptr;
+  QPushButton* setAxesButton = nullptr;
+  QCheckBox* overlaySweepsCheckBox = nullptr;
+  QCheckBox* plotAfterCheckBox = nullptr;
+  QLabel* textLabel1 = nullptr;
+  QComboBox* colorByComboBox = nullptr;
+  QPushButton* clearButton = nullptr;
+
+  QMdiSubWindow* subWindow = nullptr;
 
 signals:
   void emitCloseSignal();
@@ -294,7 +290,7 @@ private slots:
   void updateTableLabel();
   void updateTable();
   void updateStepAttribute(int, int);
-  void updateStepType(int, ProtocolStep::stepType_t);
+  void updateStepType(int, stepType_t);
   void saveProtocol();
 
 private:
@@ -367,7 +363,7 @@ public:
     WAIT
   } protocolMode;
   ProtocolStep step;
-  ProtocolStep::stepType_t stepType;
+  stepType_t stepType;
   int segmentIdx;
   int sweepIdx;
   int stepIdx;
