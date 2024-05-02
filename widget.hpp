@@ -160,7 +160,6 @@ struct ProtocolSegment
 class Protocol
 {
 public:
-  Protocol();
 
   // These should be private
   ProtocolSegment& getSegment(size_t seg_id);  // Return a segment
@@ -266,7 +265,7 @@ class ClampProtocolEditor : public QWidget
   Q_OBJECT
 
 public:
-  ClampProtocolEditor(QWidget*);
+  explicit ClampProtocolEditor(QWidget* parent);
   void createGUI();
 
 public slots:
