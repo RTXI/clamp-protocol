@@ -170,15 +170,15 @@ public:
                     double period,
                     bool withSweeps);  // Points in a segment (w/ or w/o
                                        // sweeps), length / period
-  void setSweeps(int, int);  // Set sweeps for a segment
+  void setSweeps(size_t seg_id, uint32_t sweeps);  // Set sweeps for a segment
   ProtocolStep getStep(size_t segement,
                        size_t step);  // Return step in a segment
   size_t numSteps(size_t segment);  // Return number of steps in segment
   void toDoc();  // Convert protocol to QDomDocument
   void fromDoc(QDomDocument);  // Load protocol from a QDomDocument
   void clear();  // Clears container
-  std::vector<std::vector<double>> run(
-      double);  // Runs the protocol, returns a time and output vector
+  // std::vector<std::vector<double>> run(
+  //     double);  // Runs the protocol, returns a time and output vector
 
   void addSegment();  // Add a segment to container
   void deleteSegment(size_t seg_id);  // Delete a segment from container
@@ -189,8 +189,8 @@ public:
   void modifyStep(size_t seg_id, size_t step_id, const ProtocolStep& step);
 
 private:
-  QDomElement segmentToNode(QDomDocument&, int);
-  QDomElement stepToNode(QDomDocument&, int, int);
+  QDomElement segmentToNode(QDomDocument& doc, size_t seg_id);
+  QDomElement stepToNode(QDomDocument& doc, size_t seg_id, size_t stepNum);
   QDomDocument protocolDoc;
   std::vector<ProtocolSegment> segments;
 };  // class Protocol
