@@ -170,7 +170,7 @@ public:
                     bool withSweeps);  // Points in a segment (w/ or w/o
                                        // sweeps), length / period
   void setSweeps(size_t seg_id, uint32_t sweeps);  // Set sweeps for a segment
-  ProtocolStep getStep(size_t segement,
+  ProtocolStep& getStep(size_t segement,
                        size_t step);  // Return step in a segment
   size_t numSteps(size_t segment);  // Return number of steps in segment
   void toDoc();  // Convert protocol to QDomDocument
