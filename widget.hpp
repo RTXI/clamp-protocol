@@ -133,22 +133,29 @@ enum stepType_t : int
   CURVE
 };
 
+
+// DO NOT REORDER! IF ADDING MORE PARAMETERS ISNERT RIGHT BEFORE PROTOCOL_PARAMETERS_SIZE!
+enum protocol_parameters : size_t {
+  STEP_DURATION=0,
+  DELTA_STEP_DURATION,
+  DELAY_BEFORE,
+  DELAY_AFTER,
+  HOLDING_LEVEL_1,
+  DELTA_HOLDING_LEVEL_1,
+  HOLDING_LEVEL_2,
+  DELTA_HOLDING_LEVEL_2,
+  PULSE_WIDTH,
+  PROTOCOL_PARAMETERS_SIZE
+};
+
 // Individual step within a protocol
 struct ProtocolStep
 {
   ampMode_t ampMode = VOLTAGE;
   stepType_t stepType = STEP;
-  double stepDuration = 0;
-  double deltaStepDuration = 0;
-  double delayBefore = 0;
-  double delayAfter = 0;
-  double holdingLevel1 = 0;
-  double deltaHoldingLevel1 = 0;
-  double holdingLevel2 = 0;
-  double deltaHoldingLevel2 = 0;
-  double pulseWidth = 0;
   int pulseRate = 0;
-};  // class ProtocolStep
+  std::array<double, static_cast<size_t>(protocol_parameters::PROTOCOL_PARAMETERS_SIZE)> parameters {}; 
+};  // struct ProtocolStep
 
 // A segment within a protocol, made up of ProtocolSteps
 struct ProtocolSegment
@@ -325,6 +332,10 @@ signals:
   void protocolTableScroll();
   void emitCloseSignal();
 };
+
+
+// Offset from parameter index in step struct to panel's row index
+constexpr int param_2_row_offset = 2;
 
 class Panel : public Widgets::Panel
 {

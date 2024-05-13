@@ -19,9 +19,11 @@
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QSignalMapper>
+#include <QFile>
 
 #include "widget.hpp"
 
+#include <qnamespace.h>
 #include <rtxi/debug.hpp>
 
 // namespace length is pretty long so this is to keep things short and sweet.
@@ -82,7 +84,7 @@ int Protocol::segmentLength(size_t seg_id, double period, bool withSweeps)
 {
   double time = 0;
   for (const auto& step : segments.at(seg_id).steps)
-    time += step.stepDuration;
+    time += step.parameters.at(protocol_parameters::STEP_DURATION);
 
   time *= segments.at(seg_id).numSweeps * withSweeps;
   return time / period;
@@ -120,18 +122,23 @@ QDomElement Protocol::stepToNode(QDomDocument& doc,
   stepElement.setAttribute("stepNumber", QString::number(stepNum));
   stepElement.setAttribute("ampMode", QString::number(step.ampMode));
   stepElement.setAttribute("stepType", QString::number(step.stepType));
-  stepElement.setAttribute("stepDuration", QString::number(step.stepDuration));
-  stepElement.setAttribute("deltaStepDuration",
-                           QString::number(step.deltaStepDuration));
-  stepElement.setAttribute("holdingLevel1",
-                           QString::number(step.holdingLevel1));
-  stepElement.setAttribute("deltaHoldingLevel1",
-                           QString::number(step.deltaHoldingLevel1));
-  stepElement.setAttribute("holdingLevel2",
-                           QString::number(step.holdingLevel2));
-  stepElement.setAttribute("deltaHoldingLevel2",
-                           QString::number(step.deltaHoldingLevel2));
-  stepElement.setAttribute("pulseWidth", QString::number(step.pulseWidth));
+  stepElement.setAttribute("stepDuration",
+                           QString::number(step.parameters.at(STEP_DURATION)));
+  stepElement.setAttribute(
+      "deltaStepDuration",
+      QString::number(step.parameters.at(DELTA_STEP_DURATION)));
+  stepElement.setAttribute(
+      "holdingLevel1", QString::number(step.parameters.at(HOLDING_LEVEL_1)));
+  stepElement.setAttribute(
+      "deltaHoldingLevel1",
+      QString::number(step.parameters.at(DELTA_HOLDING_LEVEL_1)));
+  stepElement.setAttribute(
+      "holdingLevel2", QString::number(step.parameters.at(HOLDING_LEVEL_2)));
+  stepElement.setAttribute(
+      "deltaHoldingLevel2",
+      QString::number(step.parameters.at(DELTA_HOLDING_LEVEL_2)));
+  stepElement.setAttribute("pulseWidth",
+                           QString::number(step.parameters.at(PULSE_WIDTH)));
   stepElement.setAttribute("pulseRate", QString::number(step.pulseRate));
 
   return stepElement;
@@ -203,16 +210,20 @@ void Protocol::fromDoc(QDomDocument doc)
           static_cast<ampMode_t>(stepElement.attribute("ampMode").toInt());
       step.stepType =
           static_cast<stepType_t>(stepElement.attribute("stepType").toInt());
-      step.stepDuration = stepElement.attribute("stepDuration").toDouble();
-      step.deltaStepDuration =
+      step.parameters.at(STEP_DURATION) =
+          stepElement.attribute("stepDuration").toDouble();
+      step.parameters.at(DELTA_STEP_DURATION) =
           stepElement.attribute("deltaStepDuration").toDouble();
-      step.holdingLevel1 = stepElement.attribute("holdingLevel1").toDouble();
-      step.deltaHoldingLevel1 =
+      step.parameters.at(HOLDING_LEVEL_1) =
+          stepElement.attribute("holdingLevel1").toDouble();
+      step.parameters.at(DELTA_HOLDING_LEVEL_1) =
           stepElement.attribute("deltaHoldingLevel1").toDouble();
-      step.holdingLevel2 = stepElement.attribute("holdingLevel2").toDouble();
-      step.deltaHoldingLevel2 =
+      step.parameters.at(HOLDING_LEVEL_2) =
+          stepElement.attribute("holdingLevel2").toDouble();
+      step.parameters.at(DELTA_HOLDING_LEVEL_2) =
           stepElement.attribute("deltaHoldingLevel2").toDouble();
-      step.pulseWidth = stepElement.attribute("pulseWidth").toDouble();
+      step.parameters.at(PULSE_WIDTH) =
+          stepElement.attribute("pulseWidth").toDouble();
       step.pulseRate = stepElement.attribute("pulseRate").toInt();
 
       stepNode = stepNode.nextSibling();  // Move to next step
@@ -255,8 +266,7 @@ void ClampProtocolEditor::addSegment()
 
   // Make QString of 'Segment ' + number of
   // segments in container
-  segmentName.append(QString("%1").arg(
-      protocol.numSegments()));  
+  segmentName.append(QString("%1").arg(protocol.numSegments()));
   // Add segment reference to listView
   auto* element = new QListWidgetItem(segmentName, segmentListWidget);
 
@@ -380,9 +390,9 @@ void ClampProtocolEditor::insertStep(void)
   }
 
   if (protocolTable->currentColumn() >= 0)  // If other steps exist
-    protocol.modifyStep(
-        currentSegmentNumber - 1,
-        protocolTable->currentColumn() + 1, {});  // Add step to segment
+    protocol.modifyStep(currentSegmentNumber - 1,
+                        protocolTable->currentColumn() + 1,
+                        {});  // Add step to segment
   else  // currentColumn() returns -1 if no columns exist
     protocol.addStep(currentSegmentNumber - 1);  // Add step to segment
 
@@ -450,8 +460,7 @@ void ClampProtocolEditor::createStep(int stepNum)
 
   comboItem = new QComboBox(protocolTable);
   comboItem->addItems(stepTypeList);
-  comboItem->setCurrentIndex(
-      step.stepType);  // Set box to retrieved attribute
+  comboItem->setCurrentIndex(step.stepType);  // Set box to retrieved attribute
   protocolTable->setCellWidget(
       1, stepNum, comboItem);  // Add step type combo box
   connect(comboItem, SIGNAL(currentIndexChanged(int)), mapper, SLOT(map()));
@@ -467,74 +476,77 @@ void ClampProtocolEditor::createStep(int stepNum)
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.stepDuration);  // Retrieve attribute value
+  text.setNum(step.parameters.at(STEP_DURATION));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(2, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.deltaStepDuration);  // Retrieve attribute value
+  text.setNum(
+      step.parameters.at(DELTA_STEP_DURATION));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(3, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.delayBefore);  // Retrieve attribute value
+  text.setNum(step.parameters.at(DELAY_BEFORE));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(4, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.delayAfter);  // Retrieve attribute value
+  text.setNum(step.parameters.at(DELAY_AFTER));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(5, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.holdingLevel1);  // Retrieve attribute value
+  text.setNum(step.parameters.at(HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(6, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.deltaHoldingLevel1);  // Retrieve attribute value
+  text.setNum(
+      step.parameters.at(DELTA_HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(7, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.holdingLevel2);  // Retrieve attribute value
+  text.setNum(step.parameters.at(HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(8, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.deltaHoldingLevel2);  // Retrieve attribute value
+  text.setNum(
+      step.parameters.at(DELTA_HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(8, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.pulseWidth);  // Retrieve attribute value
+  text.setNum(step.parameters.at(PULSE_WIDTH));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(9, stepNum, item);
-  
+
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
   text.setNum(step.pulseRate);  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(10, stepNum, item);
- 
+
   updateStepAttribute(1, stepNum);  // Update column based on step type
 }
 
@@ -547,7 +559,7 @@ void ClampProtocolEditor::comboBoxChanged(QString string)
 }
 
 void ClampProtocolEditor::updateSegment(QListWidgetItem* segment)
-{  
+{
   // Updates protocol description table when segment is clicked in listview
   // Update currentSegment to indicate which segment is selected
   QString label = segment->text();
@@ -595,7 +607,7 @@ void ClampProtocolEditor::updateTable(void)
 void ClampProtocolEditor::updateStepAttribute(int row, int col)
 {  // Updates protocol container when a table cell is changed
   ProtocolStep& step = protocol.getStep(currentSegmentNumber - 1, col);
-  QComboBox* comboItem=nullptr;
+  QComboBox* comboItem = nullptr;
   QString text;
   bool check;
 
@@ -616,37 +628,37 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
 
     case 2:
       text = protocolTable->item(row, col)->text();
-      step.stepDuration = text.toDouble(&check);
+      step.parameters.at(STEP_DURATION) = text.toDouble(&check);
       break;
 
     case 3:
       text = protocolTable->item(row, col)->text();
-      step.deltaStepDuration = text.toDouble(&check);
+      step.parameters.at(DELTA_STEP_DURATION) = text.toDouble(&check);
       break;
 
     case 4:
       text = protocolTable->item(row, col)->text();
-      step.holdingLevel1 = text.toDouble(&check);
+      step.parameters.at(HOLDING_LEVEL_1) = text.toDouble(&check);
       break;
 
     case 5:
       text = protocolTable->item(row, col)->text();
-      step.deltaHoldingLevel1 = text.toDouble(&check);
+      step.parameters.at(DELTA_HOLDING_LEVEL_1) = text.toDouble(&check);
       break;
 
     case 6:
       text = protocolTable->item(row, col)->text();
-      step.holdingLevel2 = text.toDouble(&check);
+      step.parameters.at(HOLDING_LEVEL_2) = text.toDouble(&check);
       break;
 
     case 7:
       text = protocolTable->item(row, col)->text();
-      step.deltaHoldingLevel2 = text.toDouble(&check);
+      step.parameters.at(DELTA_HOLDING_LEVEL_2) = text.toDouble(&check);
       break;
 
     case 8:
       text = protocolTable->item(row, col)->text();
-      step.pulseWidth = text.toDouble(&check);
+      step.parameters.at(PULSE_WIDTH) = text.toDouble(&check);
       break;
 
     case 9:
@@ -674,90 +686,94 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
   }
 }
 
-void ClampProtocolEditor::updateStepType(int stepNum,
-                                         stepType_t stepType)
+void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
 {
   // Disable unneeded attributes depending on step type
   // Enable needed attributes and set text to stored value
   ProtocolStep step = protocol.getStep(currentSegmentNumber - 1, stepNum);
   QTableWidgetItem* item;
-
+  const QString nullentry = "---";
   switch (stepType) {
     case STEP:
-      for (int i = 6; i <= 9; i++) {
-        item = protocolTable->item(i, stepNum);
-        item->setText("---");
+      for (size_t i = HOLDING_LEVEL_2; i <= PULSE_WIDTH; i++) {
+        item = protocolTable->item(i + param_2_row_offset, stepNum);
+        item->setText(nullentry);
+        item->setData(Qt::UserRole, 0.0);
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
       }
-      for (int i = 2; i <= 5; i++) {
-        item = protocolTable->item(i, stepNum);
+      // set pulseRate
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
+                                 stepNum);
+      item->setText(nullentry);  // Retrieve attribute and set text
+      item->setData(Qt::UserRole, step.pulseRate);
+      item->setFlags(item->flags() | Qt::ItemIsEditable);
+      for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_1; i++) {
+        item = protocolTable->item(i + param_2_row_offset, stepNum);
         item->setText(QString::number(
-            step->retrieve(i)));  // Retrieve attribute and set text
+            step.parameters.at(i)));  // Retrieve attribute and set text
+        item->setData(Qt::UserRole, step.parameters.at(i));
         item->setFlags(item->flags() | Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
       }
       break;
 
-    case ProtocolStep::RAMP:
-      for (int i = 8; i <= 9; i++) {
-        item = protocolTable->item(i, stepNum);
-        item->setText("---");
-        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
-      }
-      for (int i = 2; i <= 7; i++) {
+    case RAMP:
+      item = protocolTable->item(PULSE_WIDTH + param_2_row_offset, stepNum);
+      item->setText(nullentry);
+      item->setData(Qt::UserRole, 0.0);
+      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE+param_2_row_offset, stepNum);
+      item->setText(nullentry);
+      item->setData(Qt::UserRole, 0.0);
+      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+      for (int i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
         item = protocolTable->item(i, stepNum);
         item->setText(QString::number(
-            step->retrieve(i)));  // Retrieve attribute and set text
+            step.parameters.at(i)));  // Retrieve attribute and set text
+        item->setData(Qt::UserRole, step.parameters.at(i));
         item->setFlags(item->flags() | Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
       }
       break;
 
-    case ProtocolStep::TRAIN:
-      for (int i = 2; i <= 7; i++) {
+    case TRAIN:
+      for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
         item = protocolTable->item(i, stepNum);
-        item->setText("---");
+        item->setText(nullentry);
+        item->setData(Qt::UserRole, 0.0);
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
       }
-      for (int i = 8; i <= 9; i++) {
-        item = protocolTable->item(i, stepNum);
-        item->setText(QString::number(
-            step->retrieve(i)));  // Retrieve attribute and set text
-        item->setFlags(item->flags() | Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
-      }
+      item = protocolTable->item(PULSE_WIDTH+param_2_row_offset, stepNum);
+      item->setText(QString::number(
+          step.parameters.at(PULSE_WIDTH)));  // Retrieve attribute and set text
+      item->setData(Qt::UserRole, step.parameters.at(PULSE_WIDTH));
+      item->setFlags(item->flags() | Qt::ItemIsEditable);
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE+param_2_row_offset, stepNum);
+      item->setText(QString::number(
+          step.pulseRate));  // Retrieve attribute and set text
+      item->setData(Qt::UserRole, step.pulseRate);
+      item->setFlags(item->flags() | Qt::ItemIsEditable);
       break;
 
-    case ProtocolStep::CURVE:
-      for (int i = 8; i <= 9; i++) {
-        item = protocolTable->item(i, stepNum);
-        item->setText("---");
-        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
-      }
-      for (int i = 2; i <= 7; i++) {
-        item = protocolTable->item(i, stepNum);
+    case CURVE:
+      item = protocolTable->item(PULSE_WIDTH + param_2_row_offset, stepNum);
+      item->setText(nullentry);
+      item->setData(Qt::UserRole, 0.0);
+      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE+param_2_row_offset, stepNum);
+      item->setText(nullentry);
+      item->setData(Qt::UserRole, 0.0);
+      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+      for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
+        item = protocolTable->item(i+param_2_row_offset, stepNum);
         item->setText(QString::number(
-            step->retrieve(i)));  // Retrieve attribute and set text
+            step.parameters.at(i)));  // Retrieve attribute and set text
+        item->setData(Qt::UserRole, step.parameters.at(i));
         item->setFlags(item->flags() | Qt::ItemIsEditable);
-        updateStepAttribute(i, stepNum);
       }
       break;
-      /*
-                      case ProtocolStep::CUSTOM:
-                              for(int i = 2; i <= 9; i++) {
-                                      item = protocolTable->item( i,stepNum );
-                                      item->setText("---");
-                                      item->setFlags(item->flags() ^
-         Qt::ItemIsEditable); updateStepAttribute( i, stepNum );
-
-                              }
-                              break;
-      */
+    default:
+      break;
   }
+  for(int i = 0; i<protocolTable->rowCount(); i++) { updateStepAttribute(i, stepNum); } 
 }
 
 int ClampProtocolEditor::loadFileToProtocol(QString fileName)
@@ -1093,9 +1109,7 @@ void ClampProtocolEditor::createGUI(void)
 
   QStringList rowLabels =
       (QStringList()
-       << "Amplifier Mode"
-       << "Step Type"
-       << "Step Duration"
+       << "Amplifier Mode" << "Step Type" << "Step Duration"
        << QString::fromUtf8("\xce\x94\x20\x53\x74\x65\x70\x20\x44\x75\x72\x61"
                             "\x74\x69\x6f\x6e")
        << "Hold Level 1"
@@ -1104,14 +1118,11 @@ void ClampProtocolEditor::createGUI(void)
        << "Hold Level 2"
        << QString::fromUtf8("\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c"
                             "\x65\x76\x65\x6c\x20\x32")
-       << "Pulse Width"
-       << "Puse Train Rate");
+       << "Pulse Width" << "Puse Train Rate");
 
   QStringList rowToolTips =
       (QStringList()
-       << "Amplifier Mode"
-       << "Step Type"
-       << "Step Duration (ms)"
+       << "Amplifier Mode" << "Step Type" << "Step Duration (ms)"
        << QString::fromUtf8("\xce\x94\x20\x53\x74\x65\x70\x20\x44\x75\x72\x61"
                             "\x74\x69\x6f\x6e\x20\x28\x6d\x73\x29")
        << "Hold Level 1"
@@ -1122,8 +1133,7 @@ void ClampProtocolEditor::createGUI(void)
        << QString::fromUtf8(
               "\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c\x65\x76\x65\x6c"
               "\x20\x32\x20\x28\x6d\x56\x2f\x70\x41\x29")
-       << "Pulse Width (ms)"
-       << "Puse Train Rate");
+       << "Pulse Width (ms)" << "Puse Train Rate");
 
   protocolTable->setVerticalHeaderLabels(rowLabels);
   QTableWidgetItem* protocolWidgetItem;
