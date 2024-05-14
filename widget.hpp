@@ -194,6 +194,7 @@ public:
                   size_t step_id);  // Delete a step from segment in container
   void modifyStep(size_t seg_id, size_t step_id, const ProtocolStep& step);
 
+  QDomDocument& getProtocolDoc(){ return protocolDoc; }
 private:
   QDomElement segmentToNode(QDomDocument& doc, size_t seg_id);
   QDomElement stepToNode(QDomDocument& doc, size_t seg_id, size_t stepNum);

@@ -16,14 +16,15 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include <QFile>
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QSignalMapper>
-#include <QFile>
+#include <QFileDialog>
+#include <QInputDialog>
 
 #include "widget.hpp"
 
-#include <qnamespace.h>
 #include <rtxi/debug.hpp>
 
 // namespace length is pretty long so this is to keep things short and sweet.
@@ -169,7 +170,7 @@ void Protocol::toDoc()
 {
   QDomDocument doc("ClampProtocolML");
 
-  QDomElement root = doc.createElement("Clamp-Suite-Protocol-v1.0");
+  QDomElement root = doc.createElement("Clamp-Suite-Protocol-v2.0");
   doc.appendChild(root);
 
   // Add segment elements to protocolDoc
@@ -531,21 +532,21 @@ void ClampProtocolEditor::createStep(int stepNum)
       step.parameters.at(DELTA_HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(8, stepNum, item);
+  protocolTable->setItem(9, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
   text.setNum(step.parameters.at(PULSE_WIDTH));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(9, stepNum, item);
+  protocolTable->setItem(10, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
   text.setNum(step.pulseRate);  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(10, stepNum, item);
+  protocolTable->setItem(11, stepNum, item);
 
   updateStepAttribute(1, stepNum);  // Update column based on step type
 }
@@ -609,7 +610,7 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
   ProtocolStep& step = protocol.getStep(currentSegmentNumber - 1, col);
   QComboBox* comboItem = nullptr;
   QString text;
-  bool check;
+  QVariant val = protocolTable->item(row, col)->data(Qt::UserRole);
 
   // Check which row and update corresponding attribute in step container
   switch (row) {
@@ -627,43 +628,35 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
       break;
 
     case 2:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(STEP_DURATION) = text.toDouble(&check);
+      step.parameters.at(STEP_DURATION) = val.value<double>();
       break;
 
     case 3:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(DELTA_STEP_DURATION) = text.toDouble(&check);
+      step.parameters.at(DELTA_STEP_DURATION) = val.value<double>();
       break;
 
     case 4:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(HOLDING_LEVEL_1) = text.toDouble(&check);
+      step.parameters.at(HOLDING_LEVEL_1) = val.value<double>();
       break;
 
     case 5:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(DELTA_HOLDING_LEVEL_1) = text.toDouble(&check);
+      step.parameters.at(DELTA_HOLDING_LEVEL_1) = val.value<double>();
       break;
 
     case 6:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(HOLDING_LEVEL_2) = text.toDouble(&check);
+      step.parameters.at(HOLDING_LEVEL_2) = val.value<double>();
       break;
 
     case 7:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(DELTA_HOLDING_LEVEL_2) = text.toDouble(&check);
+      step.parameters.at(DELTA_HOLDING_LEVEL_2) = val.value<double>();
       break;
 
     case 8:
-      text = protocolTable->item(row, col)->text();
-      step.parameters.at(PULSE_WIDTH) = text.toDouble(&check);
+      step.parameters.at(PULSE_WIDTH) = val.value<double>();
       break;
 
     case 9:
-      text = protocolTable->item(row, col)->text();
-      step.pulseRate = text.toInt(&check);
+      step.pulseRate = val.value<int>();
       break;
 
     default:
@@ -671,18 +664,6 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
           << "Error - ProtocolEditor::updateStepAttribute() - default case"
           << std::endl;
       break;
-  }
-
-  // Check to make sure entries are valid
-  if (!check && row > 1 && text != "---") {
-    if (row == 9)
-      QMessageBox::warning(
-          this, "Error", "Pulse rate must be a whole number integer.");
-    else
-      QMessageBox::warning(
-          this, "Error", "Step attribute is not a valid number.");
-
-    protocolTable->item(row, col)->setText("0");
   }
 }
 
@@ -721,7 +702,8 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
       item->setText(nullentry);
       item->setData(Qt::UserRole, 0.0);
       item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE+param_2_row_offset, stepNum);
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
+                                 stepNum);
       item->setText(nullentry);
       item->setData(Qt::UserRole, 0.0);
       item->setFlags(item->flags() & ~Qt::ItemIsEditable);
@@ -741,14 +723,15 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
         item->setData(Qt::UserRole, 0.0);
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
       }
-      item = protocolTable->item(PULSE_WIDTH+param_2_row_offset, stepNum);
+      item = protocolTable->item(PULSE_WIDTH + param_2_row_offset, stepNum);
       item->setText(QString::number(
           step.parameters.at(PULSE_WIDTH)));  // Retrieve attribute and set text
       item->setData(Qt::UserRole, step.parameters.at(PULSE_WIDTH));
       item->setFlags(item->flags() | Qt::ItemIsEditable);
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE+param_2_row_offset, stepNum);
-      item->setText(QString::number(
-          step.pulseRate));  // Retrieve attribute and set text
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
+                                 stepNum);
+      item->setText(
+          QString::number(step.pulseRate));  // Retrieve attribute and set text
       item->setData(Qt::UserRole, step.pulseRate);
       item->setFlags(item->flags() | Qt::ItemIsEditable);
       break;
@@ -758,12 +741,13 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
       item->setText(nullentry);
       item->setData(Qt::UserRole, 0.0);
       item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE+param_2_row_offset, stepNum);
+      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
+                                 stepNum);
       item->setText(nullentry);
       item->setData(Qt::UserRole, 0.0);
       item->setFlags(item->flags() & ~Qt::ItemIsEditable);
       for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
-        item = protocolTable->item(i+param_2_row_offset, stepNum);
+        item = protocolTable->item(i + param_2_row_offset, stepNum);
         item->setText(QString::number(
             step.parameters.at(i)));  // Retrieve attribute and set text
         item->setData(Qt::UserRole, step.parameters.at(i));
@@ -773,7 +757,9 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
     default:
       break;
   }
-  for(int i = 0; i<protocolTable->rowCount(); i++) { updateStepAttribute(i, stepNum); } 
+  for (int i = 0; i < protocolTable->rowCount(); i++) {
+    updateStepAttribute(i, stepNum);
+  }
 }
 
 int ClampProtocolEditor::loadFileToProtocol(QString fileName)
@@ -896,7 +882,7 @@ void ClampProtocolEditor::saveProtocol(void)
     return;
   }
   QTextStream ts(&file);  // Open text stream
-  ts << protocol.protocolDoc.toString();  // Write to file
+  ts << protocol.getProtocolDoc().toString();  // Write to file
   file.close();  // Close file
 }
 
