@@ -17,15 +17,19 @@
  */
 
 #include <QFile>
+#include <QFileDialog>
+#include <QHeaderView>
+#include <QInputDialog>
+#include <QMdiArea>
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QSignalMapper>
-#include <QFileDialog>
-#include <QInputDialog>
 
 #include "widget.hpp"
 
+#include <qmdisubwindow.h>
 #include <rtxi/debug.hpp>
+#include <rtxi/rt.hpp>
 
 // namespace length is pretty long so this is to keep things short and sweet.
 using namespace clamp_protocol;
@@ -138,9 +142,6 @@ QDomElement Protocol::stepToNode(QDomDocument& doc,
   stepElement.setAttribute(
       "deltaHoldingLevel2",
       QString::number(step.parameters.at(DELTA_HOLDING_LEVEL_2)));
-  stepElement.setAttribute("pulseWidth",
-                           QString::number(step.parameters.at(PULSE_WIDTH)));
-  stepElement.setAttribute("pulseRate", QString::number(step.pulseRate));
 
   return stepElement;
 }
@@ -223,9 +224,6 @@ void Protocol::fromDoc(QDomDocument doc)
           stepElement.attribute("holdingLevel2").toDouble();
       step.parameters.at(DELTA_HOLDING_LEVEL_2) =
           stepElement.attribute("deltaHoldingLevel2").toDouble();
-      step.parameters.at(PULSE_WIDTH) =
-          stepElement.attribute("pulseWidth").toDouble();
-      step.pulseRate = stepElement.attribute("pulseRate").toInt();
 
       stepNode = stepNode.nextSibling();  // Move to next step
       stepCount++;
@@ -248,8 +246,6 @@ ClampProtocolEditor::ClampProtocolEditor(QWidget* parent)
   ampModeList.append("Current");
   stepTypeList.append("Step");
   stepTypeList.append("Ramp");
-  stepTypeList.append("Train");
-  stepTypeList.append("Curve");
 
   resize(minimumSize());  // Set window size to minimum
 }
@@ -492,20 +488,6 @@ void ClampProtocolEditor::createStep(int stepNum)
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.parameters.at(DELAY_BEFORE));  // Retrieve attribute value
-  item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(4, stepNum, item);
-
-  item = new QTableWidgetItem;
-  item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.parameters.at(DELAY_AFTER));  // Retrieve attribute value
-  item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(5, stepNum, item);
-
-  item = new QTableWidgetItem;
-  item->setTextAlignment(Qt::AlignCenter);
   text.setNum(step.parameters.at(HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
@@ -533,20 +515,6 @@ void ClampProtocolEditor::createStep(int stepNum)
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(9, stepNum, item);
-
-  item = new QTableWidgetItem;
-  item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.parameters.at(PULSE_WIDTH));  // Retrieve attribute value
-  item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(10, stepNum, item);
-
-  item = new QTableWidgetItem;
-  item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.pulseRate);  // Retrieve attribute value
-  item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(11, stepNum, item);
 
   updateStepAttribute(1, stepNum);  // Update column based on step type
 }
@@ -651,14 +619,6 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
       step.parameters.at(DELTA_HOLDING_LEVEL_2) = val.value<double>();
       break;
 
-    case 8:
-      step.parameters.at(PULSE_WIDTH) = val.value<double>();
-      break;
-
-    case 9:
-      step.pulseRate = val.value<int>();
-      break;
-
     default:
       std::cout
           << "Error - ProtocolEditor::updateStepAttribute() - default case"
@@ -676,18 +636,12 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
   const QString nullentry = "---";
   switch (stepType) {
     case STEP:
-      for (size_t i = HOLDING_LEVEL_2; i <= PULSE_WIDTH; i++) {
+      for (size_t i = HOLDING_LEVEL_2; i < PROTOCOL_PARAMETERS_SIZE; i++) {
         item = protocolTable->item(i + param_2_row_offset, stepNum);
         item->setText(nullentry);
         item->setData(Qt::UserRole, 0.0);
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
       }
-      // set pulseRate
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
-                                 stepNum);
-      item->setText(nullentry);  // Retrieve attribute and set text
-      item->setData(Qt::UserRole, step.pulseRate);
-      item->setFlags(item->flags() | Qt::ItemIsEditable);
       for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_1; i++) {
         item = protocolTable->item(i + param_2_row_offset, stepNum);
         item->setText(QString::number(
@@ -698,54 +652,6 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
       break;
 
     case RAMP:
-      item = protocolTable->item(PULSE_WIDTH + param_2_row_offset, stepNum);
-      item->setText(nullentry);
-      item->setData(Qt::UserRole, 0.0);
-      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
-                                 stepNum);
-      item->setText(nullentry);
-      item->setData(Qt::UserRole, 0.0);
-      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-      for (int i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
-        item = protocolTable->item(i, stepNum);
-        item->setText(QString::number(
-            step.parameters.at(i)));  // Retrieve attribute and set text
-        item->setData(Qt::UserRole, step.parameters.at(i));
-        item->setFlags(item->flags() | Qt::ItemIsEditable);
-      }
-      break;
-
-    case TRAIN:
-      for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
-        item = protocolTable->item(i, stepNum);
-        item->setText(nullentry);
-        item->setData(Qt::UserRole, 0.0);
-        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-      }
-      item = protocolTable->item(PULSE_WIDTH + param_2_row_offset, stepNum);
-      item->setText(QString::number(
-          step.parameters.at(PULSE_WIDTH)));  // Retrieve attribute and set text
-      item->setData(Qt::UserRole, step.parameters.at(PULSE_WIDTH));
-      item->setFlags(item->flags() | Qt::ItemIsEditable);
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
-                                 stepNum);
-      item->setText(
-          QString::number(step.pulseRate));  // Retrieve attribute and set text
-      item->setData(Qt::UserRole, step.pulseRate);
-      item->setFlags(item->flags() | Qt::ItemIsEditable);
-      break;
-
-    case CURVE:
-      item = protocolTable->item(PULSE_WIDTH + param_2_row_offset, stepNum);
-      item->setText(nullentry);
-      item->setData(Qt::UserRole, 0.0);
-      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
-      item = protocolTable->item(PROTOCOL_PARAMETERS_SIZE + param_2_row_offset,
-                                 stepNum);
-      item->setText(nullentry);
-      item->setData(Qt::UserRole, 0.0);
-      item->setFlags(item->flags() & ~Qt::ItemIsEditable);
       for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
         item = protocolTable->item(i + param_2_row_offset, stepNum);
         item->setText(QString::number(
@@ -957,8 +863,8 @@ void ClampProtocolEditor::exportProtocol(void)
     return;  // Null if user cancels dialog
 
   // Run protocol with user specified period
-  std::vector<std::vector<double> > run;
-  run = protocol.run(period);
+  std::array<std::vector<double>, 2> run;
+  run = protocol.dryrun(period);
   std::vector<double> time = run.at(0);
   std::vector<double> output = run.at(1);
 
@@ -1004,19 +910,11 @@ void ClampProtocolEditor::previewProtocol(void)
   plot->show();
 
   // Run protocol and plot
-  std::vector<std::vector<double> > run;
-  run = protocol.run(0.1);
-
-  std::vector<double> timeVector, outputVector;
-  timeVector = run.at(0);
-  outputVector = run.at(1);
+  std::array<std::vector<double>, 2> run = protocol.dryrun(0.1);
 
   QwtPlotCurve* curve =
       new QwtPlotCurve("");  // Will be deleted when preview window is closed
-  curve->setSamples(
-      &timeVector[0],
-      &outputVector[0],
-      timeVector.size());  // Makes a hard copy of both time and output
+  curve->setSamples(run.at(0).data(), run.at(1).data(), run.at(0).size());
   curve->attach(plot);
   plot->replot();
 }
@@ -1042,12 +940,13 @@ bool ClampProtocolEditor::protocolEmpty(void)
 
 void ClampProtocolEditor::createGUI(void)
 {
-  subWindow = new QMdiSubWindow;
-  subWindow->setWindowIcon(QIcon("/usr/local/lib/rtxi/RTXI-widget-icon.png"));
+  auto* panel = dynamic_cast<Widgets::Panel*>(parentWidget());
+  QMdiArea* mdi_area = panel->getMdiWindow()->mdiArea();
+  subWindow = new QMdiSubWindow(mdi_area);
+
+  subWindow->setWindowIcon(QIcon("/usr/share/rtxi/RTXI-widget-icon.png"));
   subWindow->setWindowFlags(Qt::CustomizeWindowHint | Qt::WindowCloseButtonHint
                             | Qt::WindowMinimizeButtonHint);
-  MainWindow::getInstance()->createMdi(subWindow);
-
   windowLayout = new QVBoxLayout(this);
   setLayout(windowLayout);
 
@@ -1103,8 +1002,7 @@ void ClampProtocolEditor::createGUI(void)
                             "\x65\x76\x65\x6c\x20\x31")
        << "Hold Level 2"
        << QString::fromUtf8("\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c"
-                            "\x65\x76\x65\x6c\x20\x32")
-       << "Pulse Width" << "Puse Train Rate");
+                            "\x65\x76\x65\x6c\x20\x32"));
 
   QStringList rowToolTips =
       (QStringList()
@@ -1118,8 +1016,7 @@ void ClampProtocolEditor::createGUI(void)
        << "Hold Level 2"
        << QString::fromUtf8(
               "\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c\x65\x76\x65\x6c"
-              "\x20\x32\x20\x28\x6d\x56\x2f\x70\x41\x29")
-       << "Pulse Width (ms)" << "Puse Train Rate");
+              "\x20\x32\x20\x28\x6d\x56\x2f\x70\x41\x29"));
 
   protocolTable->setVerticalHeaderLabels(rowLabels);
   QTableWidgetItem* protocolWidgetItem;
@@ -1321,13 +1218,7 @@ void Panel::initParameters(void)
   sweep = 1;
   voltage = 0;
   intervalTime = 1000;
-  numTrials = 1;
   junctionPotential = 0;
-  executeMode = IDLE;
-  segmentIdx = 0;
-  sweepIdx = 0;
-  stepIdx = 0;
-  trialIdx = 0;
 
   protocolOn = false;
   recordData = false;
@@ -1335,192 +1226,74 @@ void Panel::initParameters(void)
   plotting = false;
 }
 
-void Component::exec(void)
+double Component::getProtocolAmplitude(int64_t current_time)
 {
-  if (protocolMode == END) {  // End of protocol
-    if (trialIdx < (numTrials - 1))
-    {  // Restart protocol if additional trials are needed
-      trialIdx++;  // Advance trial
-      trial++;
-      segmentNumber = 1;
-      sweep = 1;
-      protocolEndTime =
-          RT::OS::getTime() * 1e-6;  // Time at end of protocol (ms)
-      protocolMode = WAIT;  // Wait for interval time to be finished
-    } else {  // All trials finished
-      executeMode = IDLE;
-      output(0) = 0;
-    }
-  }  // end ( protocolMode == END )
-
-  if (protocolMode == SEGMENT) {
-    numSweeps = protocol.numSweeps(segmentIdx);
-    numSteps = protocol.numSteps(segmentIdx);
-    protocolMode = STEP;
+  // Verify that indices are correct
+  if (stepIdx >= protocol->getSegment(segmentIdx).steps.size()) {
+    stepIdx = 0;
+    ++segmentIdx;
+    reference_time = current_time;
   }
 
-  if (protocolMode == STEP) {
-    step = protocol.getStep(segmentIdx, stepIdx);
-    stepType = step->stepType;
-    stepTime = 0;
-
-    stepEndTime =
-        ((step->stepDuration + (step->deltaStepDuration * sweepIdx)) / period)
-        - 1;
-    stepOutput = step->holdingLevel1 + (step->deltaHoldingLevel1 * sweepIdx);
-
-    if (stepType == ProtocolStep::RAMP) {
-      double h2 = step->holdingLevel2 + (step->deltaHoldingLevel2 * sweepIdx);
-      rampIncrement = (h2 - stepOutput) / stepEndTime;
-    } else if (stepType == ProtocolStep::TRAIN) {
-      pulseWidth = step->pulseWidth / period;
-      pulseRate = step->pulseRate / (period * 1000);
-    }
-
-    if (stepType == ProtocolStep::CURVE) {
-      double h2 = step->holdingLevel2 + (step->deltaHoldingLevel2 * sweepIdx);
-      rampIncrement = (h2 - stepOutput) / stepEndTime;
-    }
-
-    outputFactor = 1e-3;
-    inputFactor = 1e9;
-
-    if (plotting)
-      stepStart = time / period;
-
-    protocolMode = EXECUTE;
+  if (segmentIdx >= protocol->numSegments()) {
+    segmentIdx = 0;
+    ++sweepIdx;
   }
 
-  if (protocolMode == EXECUTE) {
-    switch (stepType) {
-      case ProtocolStep::STEP:
-        voltage = stepOutput;
-        output(0) = (voltage + junctionPotential) * outputFactor;
-        break;
-
-      case ProtocolStep::RAMP:
-        voltage = stepOutput + (stepTime * rampIncrement);
-        output(0) = (voltage + junctionPotential) * outputFactor;
-        break;
-
-      case ProtocolStep::TRAIN:
-        if (stepTime % pulseRate < pulseWidth) {
-          voltage = stepOutput;
-          output(0) = (voltage + junctionPotential) * outputFactor;
-        } else {
-          voltage = 0;
-          output(0) = (voltage + junctionPotential) * outputFactor;
-        }
-        break;
-
-      case ProtocolStep::CURVE:
-        if (rampIncrement >= 0) {
-          //							voltage
-          //= stepOutput +
-          //(rampIncrement)*(stepTime/(double)stepEndTime)*(stepTime/(double)stepEndTime);
-          voltage = stepOutput
-              + rampIncrement * stepTime * stepTime / (double)stepEndTime;
-
-        } else {
-          //							voltage
-          //= stepOutput + 2*rampIncrement*(stepTime/(double)stepEndTime) -
-          // rampIncrement*(stepTime/(double)stepEndTime)*(stepTime/(double)stepEndTime);
-          voltage = stepOutput + 2 * rampIncrement * stepTime
-              - rampIncrement * stepTime * stepTime / (double)stepEndTime;
-        }
-
-        output(0) = (voltage + junctionPotential) * outputFactor;
-        break;
-
-      default:
-        std::cout << "ERROR - In function ClampProtocol::execute() switch( "
-                     "stepType ) default case called"
-                  << std::endl;
-        break;
-    }
-
-    stepTime++;
-
-    if (plotting)
-      data.push_back(input(0) * inputFactor);
-
-    if (stepTime > stepEndTime) {
-      if (plotting) {
-        int stepStartSweep = 0;
-
-        for (int i = 0; i < segmentIdx; i++) {
-          stepStartSweep +=
-              protocol.segmentLength(segmentIdx - 1, period, false);
-        }
-        for (int i = 0; i < stepIdx; i++) {
-          stepStartSweep +=
-              protocol.getStep(segmentIdx, i)->stepDuration / period;
-        }
-
-        token.trial = trialIdx;
-        token.sweep = sweepIdx;
-        token.stepStartSweep = stepStartSweep;
-        token.stepStart = stepStart - 1;
-
-        token.period = period;
-        token.points = data.size();
-        token.lastStep = false;
-      }
-      stepIdx++;
-      protocolMode = STEP;
-
-      if (stepIdx == numSteps) {
-        sweepIdx++;
-        sweep++;
-        stepIdx = 0;
-
-        if (sweepIdx == numSweeps) {
-          segmentIdx++;
-          segmentNumber++;
-          sweepIdx = 0;
-          sweep = 1;
-
-          protocolMode = SEGMENT;
-
-          if (segmentIdx >= protocol.numSegments()) {
-            protocolMode = END;
-          }
-        }
-      }
-
-      if (plotting) {
-        fifo.write(&token, sizeof(token));
-        fifo.write(&data[0], token.points * sizeof(double));
-
-        data.clear();
-
-        data.push_back(input(0) * inputFactor);
-      }
-    }
+  if (sweepIdx >= protocol->getSegment(segmentIdx).numSweeps) {
+    ++trialIdx;
+    segmentIdx = 0;
   }
 
-  if (protocolMode == WAIT) {
-    if (((RT::OS::getTime() * 1e-6) - protocolEndTime) > intervalTime) {
-      time = 0;
-      segmentIdx = 0;
-      if (recordData && !recording) {
-        Event::Object event(Event::START_RECORDING_EVENT);
-        Event::Manager::getInstance()->postEventRT(&event);
-        recording = true;
-      }
-      protocolMode = SEGMENT;
-      executeMode = PROTOCOL;
-    }
-    return;
+  if (trialIdx >= numTrials) {
+    setState(RT::State::PAUSE);
+    return 0.0;
   }
 
-  time += period;
-  break;
+  // Setup and generate protocol output
+  auto& step = protocol->getStep(segmentIdx, stepIdx);
+  double voltage_mv = 0.0;
+  double time_elapsed_ms =
+      static_cast<double>(current_time - reference_time) * 1e3;
+  switch (step.stepType) {
+    case STEP: {
+      voltage_mv = step.parameters[HOLDING_LEVEL_1]
+          + step.parameters[DELTA_HOLDING_LEVEL_1] * segmentIdx;
+      break;
+    }
+    case RAMP: {
+      const double y2 = step.parameters[HOLDING_LEVEL_2]
+          + step.parameters[DELTA_HOLDING_LEVEL_2] * segmentIdx;
+      const double y1 = step.parameters[HOLDING_LEVEL_1]
+          + step.parameters[DELTA_HOLDING_LEVEL_1] * segmentIdx;
+      const double max_time = step.parameters[STEP_DURATION]
+          + step.parameters[DELTA_STEP_DURATION] * segmentIdx;
+      const double slope = (y2 - y1) / max_time;
+      const double time_ms = std::min(max_time, time_elapsed_ms);
+      voltage_mv = slope * time_ms;
+      break;
+    }
+    default:
+      ERROR_MSG(
+          "ERROR - In function ClampProtocol::execute() switch( stepType ) "
+          "default case called");
+      break;
+  }
+
+  stepIdx +=
+      time_elapsed_ms > (step.parameters[STEP_DURATION]
+                         + step.parameters[DELTA_STEP_DURATION] * segmentIdx);
+  if (plotting) {
+    data_token_t data {
+        current_time, readinput(0), trialIdx, segmentIdx, sweepIdx, stepIdx};
+    fifo->writeRT(&data, sizeof(data_token_t));
+  }
+  return voltage_mv;
 }
 
-void ClampProtocol::customizeGUI(void)
+void Panel::customizeGUI()
 {
-  QGridLayout* customLayout = DefaultGUIModel::getLayout();
+  auto* customLayout = dynamic_cast<QVBoxLayout*>(this->layout());
 
   QGroupBox* controlGroup = new QGroupBox("Controls");
   QVBoxLayout* controlGroupLayout = new QVBoxLayout;
@@ -1840,8 +1613,12 @@ void ClampProtocol::doLoad(const Settings::Object::State& s)
 void Component::execute()
 {
   // This is the real-time function that will be called
+  double voltage = 0.0;
+  const int64_t current_time = RT::OS::getPeriod();
   switch (this->getState()) {
     case RT::State::EXEC:
+      voltage = getProtocolAmplitude(current_time);
+      writeoutput(0) = (voltage + junctionPotential) * outputFactor;
       break;
     case INIT:
       period = RT::System::getInstance()->getPeriod() * 1e-9;

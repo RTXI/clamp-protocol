@@ -105,18 +105,14 @@ inline std::vector<IO::channel_t> get_default_channels()
           }};
 }
 
-struct curve_token_t
-{  // Token used in fifo, holds size of curve
+struct data_token_t
+{
+  int64_t stepStart;
+  double value;
   int trial;
+  int segment;
   int sweep;
-  bool lastStep;
-  double period;  // Time period while taking data
-  size_t points;
-  int stepStart;  // Actual time sweep started divided by period, used in normal
-                  // plotting
-  int stepStartSweep;  // Time used to overlay sweeps, unitless
-  double prevSegmentEnd;  // Time when previous segment ended if protocol had
-                          // sweeps = 1 for all segments
+  int step;
 };
 
 enum ampMode_t : int
@@ -129,22 +125,18 @@ enum stepType_t : int
 {
   STEP = 0,
   RAMP,
-  TRAIN,
-  CURVE
 };
 
-
-// DO NOT REORDER! IF ADDING MORE PARAMETERS ISNERT RIGHT BEFORE PROTOCOL_PARAMETERS_SIZE!
-enum protocol_parameters : size_t {
-  STEP_DURATION=0,
+// DO NOT REORDER! IF ADDING MORE PARAMETERS INSERT RIGHT BEFORE
+// PROTOCOL_PARAMETERS_SIZE!
+enum protocol_parameters : size_t
+{
+  STEP_DURATION = 0,
   DELTA_STEP_DURATION,
-  DELAY_BEFORE,
-  DELAY_AFTER,
   HOLDING_LEVEL_1,
   DELTA_HOLDING_LEVEL_1,
   HOLDING_LEVEL_2,
   DELTA_HOLDING_LEVEL_2,
-  PULSE_WIDTH,
   PROTOCOL_PARAMETERS_SIZE
 };
 
@@ -153,8 +145,9 @@ struct ProtocolStep
 {
   ampMode_t ampMode = VOLTAGE;
   stepType_t stepType = STEP;
-  int pulseRate = 0;
-  std::array<double, static_cast<size_t>(protocol_parameters::PROTOCOL_PARAMETERS_SIZE)> parameters {}; 
+  std::array<double,
+             static_cast<size_t>(protocol_parameters::PROTOCOL_PARAMETERS_SIZE)>
+      parameters {};
 };  // struct ProtocolStep
 
 // A segment within a protocol, made up of ProtocolSteps
@@ -167,7 +160,6 @@ struct ProtocolSegment
 class Protocol
 {
 public:
-
   // These should be private
   ProtocolSegment& getSegment(size_t seg_id);  // Return a segment
   size_t numSegments();  // Number of segments in a protocol
@@ -178,7 +170,7 @@ public:
                                        // sweeps), length / period
   void setSweeps(size_t seg_id, uint32_t sweeps);  // Set sweeps for a segment
   ProtocolStep& getStep(size_t segement,
-                       size_t step);  // Return step in a segment
+                        size_t step);  // Return step in a segment
   size_t numSteps(size_t segment);  // Return number of steps in segment
   void toDoc();  // Convert protocol to QDomDocument
   void fromDoc(QDomDocument);  // Load protocol from a QDomDocument
@@ -194,7 +186,9 @@ public:
                   size_t step_id);  // Delete a step from segment in container
   void modifyStep(size_t seg_id, size_t step_id, const ProtocolStep& step);
 
-  QDomDocument& getProtocolDoc(){ return protocolDoc; }
+  QDomDocument& getProtocolDoc() { return protocolDoc; }
+  std::array<std::vector<double>, 2> dryrun(double period);
+
 private:
   QDomElement segmentToNode(QDomDocument& doc, size_t seg_id);
   QDomElement stepToNode(QDomDocument& doc, size_t seg_id, size_t stepNum);
@@ -334,7 +328,6 @@ signals:
   void emitCloseSignal();
 };
 
-
 // Offset from parameter index in step struct to panel's row index
 constexpr int param_2_row_offset = 2;
 
@@ -343,6 +336,7 @@ class Panel : public Widgets::Panel
   Q_OBJECT
 public:
   Panel(QMainWindow* main_window, Event::Manager* ev_manager);
+  void exec();
   void initParameters();
   void customizeGUI();
 
@@ -351,49 +345,33 @@ public:
   void receiveEvent(const ::Event::Object*);
   void receiveEventRT(const ::Event::Object*);
 
+public slots:
+  void loadProtocolFile();
+  void openProtocolEditor();
+  void openProtocolWindow();
+  void updateProtocolWindow();
+  void closeProtocolWindow();
+  void closeProtocolEditor();
+  void toggleProtocol();
+
+signals:
+  void plotCurve(double*, data_token_t);
+
+private:
   std::list<ClampProtocolWindow*> plotWindowList;
 
-  //		QString fileName;
-  double period;
   double voltage, junctionPotential;
   double trial, time, sweep, segmentNumber, intervalTime;
-  int numTrials;
 
   Protocol protocol;
-  enum executeMode_t
-  {
-    IDLE,
-    PROTOCOL
-  } executeMode;
-  enum protocolMode_t
-  {
-    SEGMENT,
-    STEP,
-    EXECUTE,
-    END,
-    WAIT
-  } protocolMode;
-  ProtocolStep step;
-  stepType_t stepType;
-  int segmentIdx;
-  int sweepIdx;
-  int stepIdx;
-  int trialIdx;
-  int numSweeps;
-  int numSteps;
-  int stepTime, stepEndTime;
-  double protocolEndTime;
   double stepOutput;
   double outputFactor, inputFactor;
   double rampIncrement;
-  double pulseWidth;
-  int pulseRate;
   RT::OS::Fifo* fifo;
   std::vector<double> data;
 
   double prevSegmentEnd;  // Time segment ends after its first sweep
   int stepStart;  // Time when step starts divided by period
-  curve_token_t token;
 
   bool recordData;
   bool protocolOn;
@@ -420,19 +398,6 @@ public:
   //   bool protocolOn;
   //   bool recordData;
   // };
-
-signals:
-  void plotCurve(double*, curve_token_t);
-
-public slots:
-  void loadProtocolFile();
-  void openProtocolEditor();
-  void openProtocolWindow();
-  void updateProtocolWindow();
-  void closeProtocolWindow();
-  void closeProtocolEditor();
-  void toggleProtocol();
-  // Any functions and data related to the GUI are to be placed here
 };
 
 class Component : public Widgets::Component
@@ -440,10 +405,17 @@ class Component : public Widgets::Component
 public:
   explicit Component(Widgets::Plugin* hplugin);
   void execute() override;
-  void exec();
-
-  // Additional functionality needed for RealTime computation is to be placed
-  // here
+private:
+  double getProtocolAmplitude(int64_t current_time);
+  int segmentIdx;
+  int sweepIdx;
+  int stepIdx;
+  int trialIdx;
+  int numTrials;
+  int64_t reference_time=0;
+  bool plotting=false;
+  Protocol* protocol=nullptr;
+  RT::OS::Fifo* fifo = nullptr;
 };
 
 class Plugin : public Widgets::Plugin
