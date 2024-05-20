@@ -21,136 +21,143 @@
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QMdiArea>
+#include <QMdiSubWindow>
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QSignalMapper>
+#include <QTimer>
 
 #include "widget.hpp"
 
-#include <qmdisubwindow.h>
+#include <qwt_legend.h>
 #include <rtxi/debug.hpp>
 #include <rtxi/rt.hpp>
 
 // namespace length is pretty long so this is to keep things short and sweet.
-using namespace clamp_protocol;
 
-void Protocol::addStep(size_t seg)
+void clamp_protocol::Protocol::addStep(size_t seg_id)
 {
-  if (seg >= segments.size())  // If segment doesn't exist or not at end
+  if (seg_id >= segments.size()) {  // If segment doesn't exist or not at end
     return;
-  ProtocolSegment segment = getSegment(seg);
+  }
+  clamp_protocol::ProtocolSegment segment = getSegment(seg_id);
   segment.steps.push_back({});
 }
 
-void Protocol::deleteStep(size_t seg_id, size_t step_id)
+void clamp_protocol::Protocol::insertStep(size_t seg_id, size_t step_id)
 {
-  if (seg_id > segments.size() || step_id > segments.at(seg_id).steps.size())
+  if (seg_id > segments.size() || step_id > segments.at(seg_id).steps.size()) {
     return;
-
-  ProtocolSegment segment = getSegment(seg_id);
-  auto it = segment.steps.begin();
-  segment.steps.erase(it + step_id);
+  }
+  auto iter = segments.at(seg_id).steps.begin() + static_cast<int>(step_id);
+  segments.at(seg_id).steps.insert(iter, {});
 }
 
-void Protocol::modifyStep(size_t seg_id,
-                          size_t step_id,
-                          const ProtocolStep& step)
+void clamp_protocol::Protocol::deleteStep(size_t seg_id, size_t step_id)
+{
+  if (seg_id > segments.size() || step_id > segments.at(seg_id).steps.size()) {
+    return;
+  }
+
+  clamp_protocol::ProtocolSegment segment = getSegment(seg_id);
+  auto it = segment.steps.begin() + static_cast<int>(step_id);
+  segment.steps.erase(it);
+}
+
+void clamp_protocol::Protocol::modifyStep(
+    size_t seg_id, size_t step_id, const clamp_protocol::ProtocolStep& step)
 {
   segments.at(seg_id).steps.at(step_id) = step;
 }
 
-void Protocol::addSegment()
+void clamp_protocol::Protocol::addSegment()
 {
   segments.emplace_back();
 }
 
-void Protocol::deleteSegment(size_t seg_id)
+void clamp_protocol::Protocol::deleteSegment(size_t seg_id)
 {
   if (seg_id >= segments.size()) {
     return;
   }
 
   auto it = segments.begin();
-  segments.erase(it + seg_id);
+  segments.erase(it + static_cast<int>(seg_id));
 }
 
-void Protocol::modifySegment(size_t seg_id, const ProtocolSegment& segment)
+void clamp_protocol::Protocol::modifySegment(
+    size_t seg_id, const clamp_protocol::ProtocolSegment& segment)
 {
   segments.at(seg_id) = segment;
 }
 
-size_t Protocol::numSweeps(size_t seg_id)
+size_t clamp_protocol::Protocol::numSweeps(size_t seg_id)
 {
   return segments.at(seg_id).numSweeps;
 }
 
-// Period in ms
-int Protocol::segmentLength(size_t seg_id, double period, bool withSweeps)
+void clamp_protocol::Protocol::setSweeps(size_t seg_id, uint32_t sweeps)
 {
-  double time = 0;
-  for (const auto& step : segments.at(seg_id).steps)
-    time += step.parameters.at(protocol_parameters::STEP_DURATION);
-
-  time *= segments.at(seg_id).numSweeps * withSweeps;
-  return time / period;
+  segments.at(seg_id).numSweeps = sweeps;
 }
 
-void Protocol::setSweeps(size_t seg, uint32_t sweeps)
-{
-  segments.at(seg).numSweeps = sweeps;
-}
-
-ProtocolSegment& Protocol::getSegment(size_t seg_id)
+clamp_protocol::ProtocolSegment& clamp_protocol::Protocol::getSegment(
+    size_t seg_id)
 {
   return segments.at(seg_id);
 }
 
-ProtocolStep& Protocol::getStep(size_t segment, size_t step)
+clamp_protocol::ProtocolStep& clamp_protocol::Protocol::getStep(size_t segment,
+                                                                size_t step)
 {
   return segments.at(segment).steps.at(step);
 }
 
-size_t Protocol::numSegments()
+size_t clamp_protocol::Protocol::numSegments()
 {
   return segments.size();
 }
 
-QDomElement Protocol::stepToNode(QDomDocument& doc,
-                                 size_t seg_id,
-                                 size_t stepNum)
+QDomElement clamp_protocol::Protocol::stepToNode(QDomDocument& doc,
+                                                 size_t seg_id,
+                                                 size_t stepNum)
 {
   // Converts protocol step to XML node
   QDomElement stepElement = doc.createElement("step");  // Step element
-  ProtocolStep step = segments.at(seg_id).steps.at(stepNum);
+  clamp_protocol::ProtocolStep step = segments.at(seg_id).steps.at(stepNum);
 
   // Set attributes of step to element
   stepElement.setAttribute("stepNumber", QString::number(stepNum));
   stepElement.setAttribute("ampMode", QString::number(step.ampMode));
   stepElement.setAttribute("stepType", QString::number(step.stepType));
-  stepElement.setAttribute("stepDuration",
-                           QString::number(step.parameters.at(STEP_DURATION)));
+  stepElement.setAttribute(
+      "stepDuration",
+      QString::number(step.parameters.at(clamp_protocol::STEP_DURATION)));
   stepElement.setAttribute(
       "deltaStepDuration",
-      QString::number(step.parameters.at(DELTA_STEP_DURATION)));
+      QString::number(step.parameters.at(clamp_protocol::DELTA_STEP_DURATION)));
   stepElement.setAttribute(
-      "holdingLevel1", QString::number(step.parameters.at(HOLDING_LEVEL_1)));
+      "holdingLevel1",
+      QString::number(step.parameters.at(clamp_protocol::HOLDING_LEVEL_1)));
+  stepElement.setAttribute("deltaHoldingLevel1",
+                           QString::number(step.parameters.at(
+                               clamp_protocol::DELTA_HOLDING_LEVEL_1)));
   stepElement.setAttribute(
-      "deltaHoldingLevel1",
-      QString::number(step.parameters.at(DELTA_HOLDING_LEVEL_1)));
-  stepElement.setAttribute(
-      "holdingLevel2", QString::number(step.parameters.at(HOLDING_LEVEL_2)));
-  stepElement.setAttribute(
-      "deltaHoldingLevel2",
-      QString::number(step.parameters.at(DELTA_HOLDING_LEVEL_2)));
+      "holdingLevel2",
+      QString::number(step.parameters.at(clamp_protocol::HOLDING_LEVEL_2)));
+  stepElement.setAttribute("deltaHoldingLevel2",
+                           QString::number(step.parameters.at(
+                               clamp_protocol::DELTA_HOLDING_LEVEL_2)));
 
   return stepElement;
 }
 
 // Converts protocol segment to XML node
-QDomElement Protocol::segmentToNode(QDomDocument& doc, size_t seg_id)
+QDomElement clamp_protocol::Protocol::segmentToNode(QDomDocument& doc,
+                                                    size_t seg_id)
 {
   QDomElement segmentElement = doc.createElement("segment");  // Segment element
-  const ProtocolSegment& segment = segments.at(seg_id);
+  const clamp_protocol::ProtocolSegment& segment = segments.at(seg_id);
   segmentElement.setAttribute("numSweeps", QString::number(segment.numSweeps));
 
   // Add each step as a child to segment element
@@ -161,13 +168,13 @@ QDomElement Protocol::segmentToNode(QDomDocument& doc, size_t seg_id)
   return segmentElement;
 }
 
-void Protocol::clear()
+void clamp_protocol::Protocol::clear()
 {
   segments.clear();
 }
 
 // Convert protocol to QDomDocument
-void Protocol::toDoc()
+void clamp_protocol::Protocol::toDoc()
 {
   QDomDocument doc("ClampProtocolML");
 
@@ -183,7 +190,7 @@ void Protocol::toDoc()
 }
 
 // Load protocol from QDomDocument
-void Protocol::fromDoc(QDomDocument doc)
+void clamp_protocol::Protocol::fromDoc(const QDomDocument& doc)
 {
   QDomElement root = doc.documentElement();  // Get root element from document
 
@@ -201,28 +208,26 @@ void Protocol::fromDoc(QDomDocument doc)
     QDomNode stepNode = segmentNode.firstChild();
 
     while (!stepNode.isNull()) {  // Step iteration
-      segments.at(segmentCount)
-          .steps.at(stepCount);  // Add step to segment container
-      ProtocolStep step =
+      clamp_protocol::ProtocolStep step =
           getStep(segmentCount, stepCount);  // Retrieve step pointer
       QDomElement stepElement = stepNode.toElement();
 
       // Retrieve attributes
-      step.ampMode =
-          static_cast<ampMode_t>(stepElement.attribute("ampMode").toInt());
-      step.stepType =
-          static_cast<stepType_t>(stepElement.attribute("stepType").toInt());
-      step.parameters.at(STEP_DURATION) =
+      step.ampMode = static_cast<clamp_protocol::ampMode_t>(
+          stepElement.attribute("ampMode").toInt());
+      step.stepType = static_cast<clamp_protocol::stepType_t>(
+          stepElement.attribute("stepType").toInt());
+      step.parameters.at(clamp_protocol::STEP_DURATION) =
           stepElement.attribute("stepDuration").toDouble();
-      step.parameters.at(DELTA_STEP_DURATION) =
+      step.parameters.at(clamp_protocol::DELTA_STEP_DURATION) =
           stepElement.attribute("deltaStepDuration").toDouble();
-      step.parameters.at(HOLDING_LEVEL_1) =
+      step.parameters.at(clamp_protocol::HOLDING_LEVEL_1) =
           stepElement.attribute("holdingLevel1").toDouble();
-      step.parameters.at(DELTA_HOLDING_LEVEL_1) =
+      step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_1) =
           stepElement.attribute("deltaHoldingLevel1").toDouble();
-      step.parameters.at(HOLDING_LEVEL_2) =
+      step.parameters.at(clamp_protocol::HOLDING_LEVEL_2) =
           stepElement.attribute("holdingLevel2").toDouble();
-      step.parameters.at(DELTA_HOLDING_LEVEL_2) =
+      step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_2) =
           stepElement.attribute("deltaHoldingLevel2").toDouble();
 
       stepNode = stepNode.nextSibling();  // Move to next step
@@ -234,10 +239,9 @@ void Protocol::fromDoc(QDomDocument doc)
   }  // End segment iteration
 }
 
-ClampProtocolEditor::ClampProtocolEditor(QWidget* parent)
+clamp_protocol::ClampProtocolEditor::ClampProtocolEditor(QWidget* parent)
     : QWidget(parent)
 {
-  currentSegmentNumber = 0;
   createGUI();
   setAttribute(Qt::WA_DeleteOnClose);
 
@@ -252,48 +256,32 @@ ClampProtocolEditor::ClampProtocolEditor(QWidget* parent)
 
 // Adds another segment to protocol: listview, protocol container, and calls
 // summary update
-void ClampProtocolEditor::addSegment()
+void clamp_protocol::ClampProtocolEditor::addSegment()
 {
   protocol.addSegment();
 
   QString segmentName = "Segment ";
   // To help with sorting, a zero prefix is used for single digits
-  if (protocol.numSegments() < 10)
+  if (protocol.numSegments() < 10) {
     segmentName += "0";
+  }
 
   // Make QString of 'Segment ' + number of
   // segments in container
   segmentName.append(QString("%1").arg(protocol.numSegments()));
   // Add segment reference to listView
-  auto* element = new QListWidgetItem(segmentName, segmentListWidget);
-
-  // Find newly inserted segment
-  if (currentSegmentNumber + 1 < 10) {
-    QList<QListWidgetItem*> elements = segmentListWidget->findItems(
-        "Segment 0" + QString::number(currentSegmentNumber + 1), 0);
-    if (!elements.isEmpty())
-      element = elements.takeFirst();
-  } else {
-    QList<QListWidgetItem*> elements = segmentListWidget->findItems(
-        "Segment " + QString::number(currentSegmentNumber + 1), 0);
-    if (!elements.isEmpty())
-      element = elements.takeFirst();
-  }
-
-  if (!element) {  // element = 0 if nothing was found
-    element = segmentListWidget->item(segmentListWidget->count());
-    segmentListWidget->setCurrentItem(element);
-  } else
-    segmentListWidget->setCurrentItem(
-        element);  // Focus on newly created segment
+  auto* element = new QListWidgetItem(segmentName);
+  segmentListWidget->addItem(element);
+  segmentListWidget->setCurrentItem(element);  // Focus on newly created segment
 
   updateSegment(element);
 }
 
-void ClampProtocolEditor::deleteSegment(void)
+void clamp_protocol::ClampProtocolEditor::deleteSegment()
 {  // Deletes segment selected in listview: listview, protocol container, and
    // calls summary update
-  if (currentSegmentNumber == 0)
+  int currentSegmentNumber = segmentListWidget->currentRow();
+  if (currentSegmentNumber < 0)
   {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
@@ -306,8 +294,11 @@ void ClampProtocolEditor::deleteSegment(void)
   QString text = "Do you wish to delete Segment " + segmentString
       + "?";  // Text pointing out specific segment and step
   if (QMessageBox::question(
-          this, "Delete Segment Confirmation", text, "Yes", "No"))
+          this, "Delete Segment Confirmation", text, "Yes", "No")
+      != 0)
+  {
     return;  // Answer is no
+  }
 
   if (protocol.numSegments() == 1)
   {  // If only 1 segment exists, clear protocol
@@ -320,12 +311,13 @@ void ClampProtocolEditor::deleteSegment(void)
   segmentListWidget->clear();  // Clear list view
 
   // Rebuild list view
-  QListWidgetItem* element;
+  QListWidgetItem* element = nullptr;
   for (int i = 0; i < protocol.numSegments(); i++) {
     segmentString = "Segment ";
-    if (i < 10)  // Prefix with zero if a single digit
+    if (i < 10) {  // Prefix with zero if a single digit
       segmentString += "0";
-    segmentString += QString::number(i + 1);  // Add number to segment string
+    }
+    segmentString += QString::number(i);  // Add number to segment string
     element = new QListWidgetItem(
         segmentString, segmentListWidget);  // Add segment to list view
     segmentListWidget->addItem(element);
@@ -356,58 +348,53 @@ void ClampProtocolEditor::deleteSegment(void)
   }
 }
 
-void ClampProtocolEditor::addStep()
+void clamp_protocol::ClampProtocolEditor::addStep()
 {  // Adds step to a protocol segment: updates protocol container
-  if (currentSegmentNumber == 0)
+  if (segmentListWidget->currentRow() != 0)
   {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
     return;
   }
 
-  protocol.addStep(currentSegmentNumber - 1);  // Add step to segment
+  protocol.addStep(segmentListWidget->currentRow());  // Add step to segment
 
   updateTable();  // Rebuild table
 
   // Set scroll bar all the way to the right when step is added
   QScrollBar* hbar = protocolTable->horizontalScrollBar();
-  hbar->setMaximum(hbar->maximum()
-                   + 100);  // Offset of 100 is due to race condition when
-                            // scroll bar is actually updated
   hbar->setValue(hbar->maximum());
 }
 
-void ClampProtocolEditor::insertStep(void)
+void clamp_protocol::ClampProtocolEditor::insertStep()
 {  // Insert step to a protocol segment: updates protocol container
-  if (currentSegmentNumber == 0)
+  if (segmentListWidget->currentRow() != 0)
   {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
     return;
   }
 
-  if (protocolTable->currentColumn() >= 0)  // If other steps exist
-    protocol.modifyStep(currentSegmentNumber - 1,
-                        protocolTable->currentColumn() + 1,
-                        {});  // Add step to segment
-  else  // currentColumn() returns -1 if no columns exist
-    protocol.addStep(currentSegmentNumber - 1);  // Add step to segment
-
+  if (protocolTable->currentColumn() >= 0) {  // If other steps exist
+    protocol.insertStep(segmentListWidget->currentRow(),
+                        protocolTable->currentColumn());  // Add step to segment
+  } else {  // currentColumn() returns -1 if no columns exist
+    protocol.addStep(segmentListWidget->currentRow());  // Add step to segment
+  }
   updateTable();  // Rebuild table
 }
 
-void ClampProtocolEditor::deleteStep(void)
+void clamp_protocol::ClampProtocolEditor::deleteStep()
 {  // Delete step from a protocol segment: updates table, listview, and protocol
    // container
-  if (currentSegmentNumber == 0)
+  if (segmentListWidget->currentRow() == 0)
   {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
     return;
   }
 
-  int stepNum =
-      protocolTable->currentColumn();  // Step number that is currently selected
+  int stepNum = protocolTable->currentColumn();
 
   if (stepNum == -1) {  // If no step exists, return and output error box
     QMessageBox::warning(
@@ -417,37 +404,36 @@ void ClampProtocolEditor::deleteStep(void)
 
   // Message box asking for confirmation whether step should be deleted
   QString stepString;
-  stepString.setNum(stepNum + 1);
+  stepString.setNum(stepNum);
   QString segmentString;
-  segmentString.setNum(currentSegmentNumber);
+  segmentString.setNum(segmentListWidget->currentRow());
   QString text = "Do you wish to delete Step " + stepString + " of Segment "
       + segmentString + "?";  // Text pointing out specific segment and step
-  bool answer = QMessageBox::question(
-      this, "Delete Step Confirmation", text, "Yes", "No");
+  bool answer =
+      QMessageBox::question(this, "Delete Step Confirmation", text, "Yes", "No")
+      != 0;
 
-  if (answer)  // No
+  if (answer) {
     return;
-  else {  // Yes
-    protocol.deleteStep(currentSegmentNumber - 1,
-                        stepNum);  // Erase step from segment
-    updateTable();  // Update table
   }
+  protocol.deleteStep(segmentListWidget->currentRow(), stepNum);
+  updateTable();
 }
 
-void ClampProtocolEditor::createStep(int stepNum)
-{  // Creates and initializes protocol step
-
+void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
+{
   protocolTable->insertColumn(stepNum);  // Insert new column
   QString headerLabel =
-      "Step " + QString("%1").arg(stepNum + 1);  // Make header label
-  QTableWidgetItem* horizontalHeader = new QTableWidgetItem;
+      "Step " + QString("%1").arg(stepNum);  // Make header label
+  auto* horizontalHeader = new QTableWidgetItem;
   horizontalHeader->setText(headerLabel);
   protocolTable->setHorizontalHeaderItem(stepNum, horizontalHeader);
 
-  QSignalMapper* mapper = new QSignalMapper(this);
+  auto* mapper = new QSignalMapper(this);
 
-  QComboBox* comboItem = new QComboBox(protocolTable);
-  ProtocolStep step = protocol.getStep(currentSegmentNumber - 1, stepNum);
+  auto* comboItem = new QComboBox(protocolTable);
+  clamp_protocol::ProtocolStep step =
+      protocol.getStep(segmentListWidget->currentRow(), stepNum);
   comboItem->addItems(ampModeList);
   comboItem->setCurrentIndex(step.ampMode);
   protocolTable->setCellWidget(
@@ -468,50 +454,53 @@ void ClampProtocolEditor::createStep(int stepNum)
           this,
           SLOT(comboBoxChanged(const QString&)));
 
-  QTableWidgetItem* item;
+  QTableWidgetItem* item = nullptr;
   QString text;
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.parameters.at(STEP_DURATION));  // Retrieve attribute value
+  text.setNum(step.parameters.at(
+      clamp_protocol::STEP_DURATION));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(2, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(
-      step.parameters.at(DELTA_STEP_DURATION));  // Retrieve attribute value
+  text.setNum(step.parameters.at(
+      clamp_protocol::DELTA_STEP_DURATION));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(3, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.parameters.at(HOLDING_LEVEL_1));  // Retrieve attribute value
+  text.setNum(step.parameters.at(
+      clamp_protocol::HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(6, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(
-      step.parameters.at(DELTA_HOLDING_LEVEL_1));  // Retrieve attribute value
+  text.setNum(step.parameters.at(
+      clamp_protocol::DELTA_HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(7, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(step.parameters.at(HOLDING_LEVEL_2));  // Retrieve attribute value
+  text.setNum(step.parameters.at(
+      clamp_protocol::HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(8, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
-  text.setNum(
-      step.parameters.at(DELTA_HOLDING_LEVEL_2));  // Retrieve attribute value
+  text.setNum(step.parameters.at(
+      clamp_protocol::DELTA_HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(9, stepNum, item);
@@ -519,7 +508,7 @@ void ClampProtocolEditor::createStep(int stepNum)
   updateStepAttribute(1, stepNum);  // Update column based on step type
 }
 
-void ClampProtocolEditor::comboBoxChanged(QString string)
+void clamp_protocol::ClampProtocolEditor::comboBoxChanged(const QString& string)
 {
   QStringList coordinates = string.split("-");
   int row = coordinates[0].toInt();
@@ -527,33 +516,37 @@ void ClampProtocolEditor::comboBoxChanged(QString string)
   updateStepAttribute(row, col);
 }
 
-void ClampProtocolEditor::updateSegment(QListWidgetItem* segment)
+void clamp_protocol::ClampProtocolEditor::updateSegment(
+    QListWidgetItem* segment)
 {
   // Updates protocol description table when segment is clicked in listview
   // Update currentSegment to indicate which segment is selected
-  QString label = segment->text();
-  label = label.right(2);  // Truncate label to get segment number
-  currentSegmentNumber = label.toInt();  // Convert QString to int, now refers
-                                         // to current segment number
-  segmentSweepSpinBox->setValue(protocol.numSweeps(
-      currentSegmentNumber - 1));  // Set sweep number spin box to value stored
-                                   // for particular segment
+  int currentSegmentNumber = segmentListWidget->row(segment);
+  if (currentSegmentNumber < 0) {
+    ERROR_MSG(
+        "clamp_protocol::ClampProtocolEditor : Segment somehow doesn't exist!");
+    return;
+  }
+  segmentSweepSpinBox->setValue(
+      static_cast<int>(protocol.numSweeps(static_cast<size_t>(
+          currentSegmentNumber))));  // Set sweep number spin box to value
+                                     // stored for particular segment
   updateTableLabel();  // Update label of protocol table
 }
 
-void ClampProtocolEditor::updateSegmentSweeps(int sweepNum)
+void clamp_protocol::ClampProtocolEditor::updateSegmentSweeps(int sweepNum)
 {  // Update container that holds number of segment sweeps when spinbox value is
    // changed
-  protocol.setSweeps(currentSegmentNumber - 1,
+  protocol.setSweeps(segmentListWidget->currentRow(),
                      sweepNum);  // Set segment sweep value to spin box value
 }
 
-void ClampProtocolEditor::updateTableLabel(void)
+void clamp_protocol::ClampProtocolEditor::updateTableLabel()
 {  // Updates the label above protocol table to show current selected segment
    // and step
   QString text = "Segment ";
-  text.append(QString::number(currentSegmentNumber));
-  int col = protocolTable->currentColumn() + 1;
+  text.append(QString::number(segmentListWidget->currentRow()));
+  int col = protocolTable->currentColumn();
   if (col != 0) {
     text.append(": Step ");
     text.append(QString::number(col));
@@ -561,21 +554,22 @@ void ClampProtocolEditor::updateTableLabel(void)
   segmentStepLabel->setText(text);
 }
 
-void ClampProtocolEditor::updateTable(void)
+void clamp_protocol::ClampProtocolEditor::updateTable()
 {  // Updates protocol description table: clears and reloads table from scratch
   protocolTable->setColumnCount(0);  // Clear table by setting columns to 0
                                      // *Note: deletes QTableItem objects*
 
   // Load steps from current clicked segment into protocol
   int i = 0;
-  for (i = 0; i < protocol.numSteps(currentSegmentNumber - 1); i++) {
+  for (i = 0; i < protocol.numSteps(segmentListWidget->currentRow()); i++) {
     createStep(i);  // Update step in protocol table
   }
 }
 
-void ClampProtocolEditor::updateStepAttribute(int row, int col)
+void clamp_protocol::ClampProtocolEditor::updateStepAttribute(int row, int col)
 {  // Updates protocol container when a table cell is changed
-  ProtocolStep& step = protocol.getStep(currentSegmentNumber - 1, col);
+  clamp_protocol::ProtocolStep& step =
+      protocol.getStep(segmentListWidget->currentRow() - 1, col);
   QComboBox* comboItem = nullptr;
   QString text;
   QVariant val = protocolTable->item(row, col)->data(Qt::UserRole);
@@ -585,38 +579,43 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
     case 0:
       // Retrieve current item of combo box and set ampMode
       comboItem = qobject_cast<QComboBox*>(protocolTable->cellWidget(row, col));
-      step.ampMode = static_cast<ampMode_t>(comboItem->currentIndex());
+      step.ampMode =
+          static_cast<clamp_protocol::ampMode_t>(comboItem->currentIndex());
       break;
 
     case 1:
       // Retrieve current item of combo box and set stepType
       comboItem = qobject_cast<QComboBox*>(protocolTable->cellWidget(row, col));
-      step.stepType = static_cast<stepType_t>(comboItem->currentIndex());
+      step.stepType =
+          static_cast<clamp_protocol::stepType_t>(comboItem->currentIndex());
       updateStepType(col, step.stepType);
       break;
 
     case 2:
-      step.parameters.at(STEP_DURATION) = val.value<double>();
+      step.parameters.at(clamp_protocol::STEP_DURATION) = val.value<double>();
       break;
 
     case 3:
-      step.parameters.at(DELTA_STEP_DURATION) = val.value<double>();
+      step.parameters.at(clamp_protocol::DELTA_STEP_DURATION) =
+          val.value<double>();
       break;
 
     case 4:
-      step.parameters.at(HOLDING_LEVEL_1) = val.value<double>();
+      step.parameters.at(clamp_protocol::HOLDING_LEVEL_1) = val.value<double>();
       break;
 
     case 5:
-      step.parameters.at(DELTA_HOLDING_LEVEL_1) = val.value<double>();
+      step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_1) =
+          val.value<double>();
       break;
 
     case 6:
-      step.parameters.at(HOLDING_LEVEL_2) = val.value<double>();
+      step.parameters.at(clamp_protocol::HOLDING_LEVEL_2) = val.value<double>();
       break;
 
     case 7:
-      step.parameters.at(DELTA_HOLDING_LEVEL_2) = val.value<double>();
+      step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_2) =
+          val.value<double>();
       break;
 
     default:
@@ -627,23 +626,33 @@ void ClampProtocolEditor::updateStepAttribute(int row, int col)
   }
 }
 
-void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
+void clamp_protocol::ClampProtocolEditor::updateStepType(
+    int stepNum, clamp_protocol::stepType_t stepType)
 {
   // Disable unneeded attributes depending on step type
   // Enable needed attributes and set text to stored value
-  ProtocolStep step = protocol.getStep(currentSegmentNumber - 1, stepNum);
+  clamp_protocol::ProtocolStep step =
+      protocol.getStep(segmentListWidget->currentRow() - 1, stepNum);
   QTableWidgetItem* item;
   const QString nullentry = "---";
   switch (stepType) {
-    case STEP:
-      for (size_t i = HOLDING_LEVEL_2; i < PROTOCOL_PARAMETERS_SIZE; i++) {
-        item = protocolTable->item(i + param_2_row_offset, stepNum);
+    case clamp_protocol::STEP:
+      for (size_t i = clamp_protocol::HOLDING_LEVEL_2;
+           i < clamp_protocol::PROTOCOL_PARAMETERS_SIZE;
+           i++)
+      {
+        item = protocolTable->item(i + clamp_protocol::param_2_row_offset,
+                                   stepNum);
         item->setText(nullentry);
         item->setData(Qt::UserRole, 0.0);
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
       }
-      for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_1; i++) {
-        item = protocolTable->item(i + param_2_row_offset, stepNum);
+      for (size_t i = clamp_protocol::STEP_DURATION;
+           i <= clamp_protocol::DELTA_HOLDING_LEVEL_1;
+           i++)
+      {
+        item = protocolTable->item(i + clamp_protocol::param_2_row_offset,
+                                   stepNum);
         item->setText(QString::number(
             step.parameters.at(i)));  // Retrieve attribute and set text
         item->setData(Qt::UserRole, step.parameters.at(i));
@@ -651,9 +660,13 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
       }
       break;
 
-    case RAMP:
-      for (size_t i = STEP_DURATION; i <= DELTA_HOLDING_LEVEL_2; i++) {
-        item = protocolTable->item(i + param_2_row_offset, stepNum);
+    case clamp_protocol::RAMP:
+      for (size_t i = clamp_protocol::STEP_DURATION;
+           i <= clamp_protocol::DELTA_HOLDING_LEVEL_2;
+           i++)
+      {
+        item = protocolTable->item(i + clamp_protocol::param_2_row_offset,
+                                   stepNum);
         item->setText(QString::number(
             step.parameters.at(i)));  // Retrieve attribute and set text
         item->setData(Qt::UserRole, step.parameters.at(i));
@@ -668,7 +681,7 @@ void ClampProtocolEditor::updateStepType(int stepNum, stepType_t stepType)
   }
 }
 
-int ClampProtocolEditor::loadFileToProtocol(QString fileName)
+int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(QString fileName)
 {  // Loads XML file of protocol data: updates table, listview, and protocol
    // container
   // If protocol is present, warn user that protocol will be lost upon loading
@@ -712,7 +725,7 @@ int ClampProtocolEditor::loadFileToProtocol(QString fileName)
     if (protocol.numSegments()
         < 10)  // To help with sorting, a zero prefix is used for single digits
       segmentName += "0";
-    segmentName += QString::number(i + 1);
+    segmentName += QString::number(i);
 
     QListWidgetItem* element = new QListWidgetItem(
         segmentName, segmentListWidget);  // Add segment reference to listView
@@ -727,7 +740,7 @@ int ClampProtocolEditor::loadFileToProtocol(QString fileName)
   return 1;
 }
 
-QString ClampProtocolEditor::loadProtocol(void)
+QString clamp_protocol::ClampProtocolEditor::loadProtocol()
 {
   // Save dialog to retrieve desired filename and location
   QString fileName = QFileDialog::getOpenFileName(
@@ -747,12 +760,12 @@ QString ClampProtocolEditor::loadProtocol(void)
   return fileName;
 }
 
-void ClampProtocolEditor::loadProtocol(QString fileName)
+void clamp_protocol::ClampProtocolEditor::loadProtocol(QString fileName)
 {
   loadFileToProtocol(fileName);
 }
 
-void ClampProtocolEditor::saveProtocol(void)
+void clamp_protocol::ClampProtocolEditor::saveProtocol()
 {  // Takes data within protocol container and converts to XML and saves to file
   if (protocolEmpty())  // Exit if protocol is empty
     return;
@@ -792,10 +805,9 @@ void ClampProtocolEditor::saveProtocol(void)
   file.close();  // Close file
 }
 
-void ClampProtocolEditor::clearProtocol(void)
+void clamp_protocol::ClampProtocolEditor::clearProtocol()
 {  // Clear protocol
   protocol.clear();
-  currentSegmentNumber = 0;
   protocolTable->setColumnCount(0);  // Clear table
   segmentListWidget->clear();
 
@@ -811,13 +823,14 @@ void ClampProtocolEditor::clearProtocol(void)
                    SLOT(updateSegmentSweeps(int)));
 }
 
-void ClampProtocolEditor::exportProtocol(void)
+void clamp_protocol::ClampProtocolEditor::exportProtocol()
 {  // Export protocol to a text file format ( time : output )
-  if (protocolEmpty())  // Exit if protocol is empty
+  if (protocolEmpty()) {  // Exit if protocol is empty
     return;
+  }
 
   // Grab period
-  bool ok;
+  bool ok = false;
   double period = QInputDialog::getDouble(this,
                                           "Export Clamp Protocol",
                                           "Enter the period (ms): ",
@@ -827,8 +840,9 @@ void ClampProtocolEditor::exportProtocol(void)
                                           3,
                                           &ok);
 
-  if (!ok)
+  if (!ok) {
     return;  // User cancels
+  }
 
   // Save dialog to retrieve desired filename and location
   QString fileName =
@@ -838,8 +852,9 @@ void ClampProtocolEditor::exportProtocol(void)
                                    "Text files (*.txt);;All Files (*.*)");
 
   // If filename does not include .txt extension, add extension
-  if (!(fileName.endsWith(".txt")))
+  if (!(fileName.endsWith(".txt"))) {
     fileName.append(".txt");
+  }
 
   // If filename exists, warn user
   if (QFileInfo(fileName).exists()
@@ -848,7 +863,9 @@ void ClampProtocolEditor::exportProtocol(void)
                               "Do you wish to overwrite " + fileName + "?",
                               QMessageBox::Yes | QMessageBox::No)
           != QMessageBox::Yes)
+  {
     return;  // Return if answer is no
+  }
 
   // Save protocol to file
   QFile file(fileName);  // Open file
@@ -859,8 +876,9 @@ void ClampProtocolEditor::exportProtocol(void)
     return;
   }
 
-  if (fileName == NULL)
+  if (fileName == nullptr) {
     return;  // Null if user cancels dialog
+  }
 
   // Run protocol with user specified period
   std::array<std::vector<double>, 2> run;
@@ -870,8 +888,7 @@ void ClampProtocolEditor::exportProtocol(void)
 
   QTextStream ts(&file);
 
-  for (std::vector<double>::iterator itx = time.begin(), ity = output.begin();
-       itx < time.end();
+  for (auto itx = time.begin(), ity = output.begin(); itx < time.end();
        itx++, ity++)
   {  // Iterate through vectors and output to file
     ts << *itx << " " << *ity << "\n";
@@ -880,29 +897,31 @@ void ClampProtocolEditor::exportProtocol(void)
   file.close();  // Close file
 }
 
-void ClampProtocolEditor::previewProtocol(void)
+void clamp_protocol::ClampProtocolEditor::previewProtocol()
 {  // Graph protocol output in a simple plot window
-  if (protocolEmpty())
+  if (protocolEmpty()) {
     return;  // Exit if protocol is empty
+  }
 
   // Create a dialog with a BasicPlot
-  QDialog* dlg = new QDialog(this, Qt::Dialog);
+  auto* dlg = new QDialog(this, Qt::Dialog);
   dlg->setAttribute(Qt::WA_DeleteOnClose);
   dlg->setWindowTitle("Protocol Preview");
-  QVBoxLayout* layout = new QVBoxLayout(dlg);
-  QwtPlot* plot = new QwtPlot(dlg);
+  auto* layout = new QVBoxLayout(dlg);
+  auto* plot = new QwtPlot(dlg);
   layout->addWidget(plot);
   dlg->resize(500, 500);
   dlg->show();
 
   // Add close button to bottom of the window
-  QPushButton* closeButton = new QPushButton("Close", dlg);
+  auto* closeButton = new QPushButton("Close", dlg);
   QObject::connect(closeButton, SIGNAL(clicked()), dlg, SLOT(accept()));
   layout->addWidget(closeButton);
 
   // Plot Settings
   plot->setCanvasBackground(QColor(70, 128, 186));
-  QwtText xAxisTitle, yAxisTitle;
+  QwtText xAxisTitle;
+  QwtText yAxisTitle;
   xAxisTitle.setText("Time (ms)");
   yAxisTitle.setText("Voltage (mV)");
   plot->setAxisTitle(QwtPlot::xBottom, xAxisTitle);
@@ -912,14 +931,13 @@ void ClampProtocolEditor::previewProtocol(void)
   // Run protocol and plot
   std::array<std::vector<double>, 2> run = protocol.dryrun(0.1);
 
-  QwtPlotCurve* curve =
-      new QwtPlotCurve("");  // Will be deleted when preview window is closed
+  auto* curve = new QwtPlotCurve("");
   curve->setSamples(run.at(0).data(), run.at(1).data(), run.at(0).size());
   curve->attach(plot);
   plot->replot();
 }
 
-bool ClampProtocolEditor::protocolEmpty(void)
+bool clamp_protocol::ClampProtocolEditor::protocolEmpty()
 {  // Make sure protocol has at least one segment with one step
   if (protocol.numSegments() == 0) {  // Check if first segment exists
     QMessageBox::warning(this,
@@ -927,7 +945,9 @@ bool ClampProtocolEditor::protocolEmpty(void)
                          "A protocol must contain at least one segment that "
                          "contains at least one step");
     return true;
-  } else if (protocol.numSteps(0) == 0) {  // Check if first segment has a step
+  }
+
+  if (protocol.numSteps(0) == 0) {  // Check if first segment has a step
     QMessageBox::warning(this,
                          "Error",
                          "A protocol must contain at least one segment that "
@@ -938,7 +958,7 @@ bool ClampProtocolEditor::protocolEmpty(void)
   return false;
 }
 
-void ClampProtocolEditor::createGUI(void)
+void clamp_protocol::ClampProtocolEditor::createGUI()
 {
   auto* panel = dynamic_cast<Widgets::Panel*>(parentWidget());
   QMdiArea* mdi_area = panel->getMdiWindow()->mdiArea();
@@ -951,9 +971,9 @@ void ClampProtocolEditor::createGUI(void)
   setLayout(windowLayout);
 
   layout1 = new QHBoxLayout;
-  QHBoxLayout* layout1_left = new QHBoxLayout;
+  auto* layout1_left = new QHBoxLayout;
   layout1_left->setAlignment(Qt::AlignLeft);
-  QHBoxLayout* layout1_right = new QHBoxLayout;
+  auto* layout1_right = new QHBoxLayout;
   layout1_right->setAlignment(Qt::AlignRight);
 
   saveProtocolButton = new QPushButton("Save");
@@ -1019,13 +1039,13 @@ void ClampProtocolEditor::createGUI(void)
               "\x20\x32\x20\x28\x6d\x56\x2f\x70\x41\x29"));
 
   protocolTable->setVerticalHeaderLabels(rowLabels);
-  QTableWidgetItem* protocolWidgetItem;
+  QTableWidgetItem* protocolWidgetItem = nullptr;
   for (int i = 0; i < rowLabels.length(); i++) {
     protocolWidgetItem = protocolTable->takeVerticalHeaderItem(i);
     protocolWidgetItem->setToolTip(rowToolTips.at(i));
     protocolTable->setVerticalHeaderItem(i, protocolWidgetItem);
   }
-  protocolWidgetItem = NULL;
+  protocolWidgetItem = nullptr;
   delete (protocolWidgetItem);
 
   protocolTable->verticalHeader()->setDefaultSectionSize(24);
@@ -1033,12 +1053,14 @@ void ClampProtocolEditor::createGUI(void)
 
   {
     int w = protocolTable->verticalHeader()->width() + 4;
-    for (int i = 0; i < protocolTable->columnCount(); i++)
+    for (int i = 0; i < protocolTable->columnCount(); i++) {
       w += protocolTable->columnWidth(i);
+    }
 
     int h = protocolTable->horizontalHeader()->height() + 4;
-    for (int i = 0; i < protocolTable->rowCount(); i++)
+    for (int i = 0; i < protocolTable->rowCount(); i++) {
       h += protocolTable->rowHeight(i);
+    }
 
     protocolTable->setMinimumHeight(h + 30);
   }
@@ -1107,9 +1129,9 @@ void ClampProtocolEditor::createGUI(void)
   QObject::connect(protocolTable,
                    SIGNAL(itemClicked(QTableWidgetItem*)),
                    this,
-                   SLOT(updateTableLabel(void)));
+                   SLOT(updateTableLabel()));
   QObject::connect(
-      addSegmentButton, SIGNAL(clicked(void)), this, SLOT(addSegment(void)));
+      addSegmentButton, SIGNAL(clicked()), this, SLOT(addSegment()));
   QObject::connect(segmentListWidget,
                    SIGNAL(itemActivated(QListWidgetItem*)),
                    this,
@@ -1117,7 +1139,7 @@ void ClampProtocolEditor::createGUI(void)
   QObject::connect(segmentListWidget,
                    SIGNAL(itemActivated(QListWidgetItem*)),
                    this,
-                   SLOT(updateTable(void)));
+                   SLOT(updateTable()));
   QObject::connect(segmentListWidget,
                    SIGNAL(itemChanged(QListWidgetItem*)),
                    this,
@@ -1125,100 +1147,85 @@ void ClampProtocolEditor::createGUI(void)
   QObject::connect(segmentListWidget,
                    SIGNAL(itemChanged(QListWidgetItem*)),
                    this,
-                   SLOT(updateTable(void)));
+                   SLOT(updateTable()));
   QObject::connect(segmentSweepSpinBox,
                    SIGNAL(valueChanged(int)),
                    this,
                    SLOT(updateSegmentSweeps(int)));
+  QObject::connect(addStepButton, SIGNAL(clicked()), this, SLOT(addStep()));
   QObject::connect(
-      addStepButton, SIGNAL(clicked(void)), this, SLOT(addStep(void)));
-  QObject::connect(
-      insertStepButton, SIGNAL(clicked(void)), this, SLOT(insertStep(void)));
+      insertStepButton, SIGNAL(clicked()), this, SLOT(insertStep()));
   QObject::connect(protocolTable,
                    SIGNAL(cellChanged(int, int)),
                    this,
                    SLOT(updateStepAttribute(int, int)));
   QObject::connect(
-      deleteStepButton, SIGNAL(clicked(void)), this, SLOT(deleteStep(void)));
-  QObject::connect(deleteSegmentButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(deleteSegment(void)));
-  QObject::connect(saveProtocolButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(saveProtocol(void)));
-  QObject::connect(loadProtocolButton,
-                   SIGNAL(clicked(bool)),
-                   this,
-                   SLOT(loadProtocol(void)));
-  QObject::connect(clearProtocolButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(clearProtocol(void)));
-  QObject::connect(exportProtocolButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(exportProtocol(void)));
-  QObject::connect(previewProtocolButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(previewProtocol(void)));
+      deleteStepButton, SIGNAL(clicked()), this, SLOT(deleteStep()));
+  QObject::connect(
+      deleteSegmentButton, SIGNAL(clicked()), this, SLOT(deleteSegment()));
+  QObject::connect(
+      saveProtocolButton, SIGNAL(clicked()), this, SLOT(saveProtocol()));
+  QObject::connect(
+      loadProtocolButton, SIGNAL(clicked(bool)), this, SLOT(loadProtocol()));
+  QObject::connect(
+      clearProtocolButton, SIGNAL(clicked()), this, SLOT(clearProtocol()));
+  QObject::connect(
+      exportProtocolButton, SIGNAL(clicked()), this, SLOT(exportProtocol()));
+  QObject::connect(
+      previewProtocolButton, SIGNAL(clicked()), this, SLOT(previewProtocol()));
 
   subWindow->setWidget(this);
   subWindow->show();
   subWindow->adjustSize();
 }
 
-void ClampProtocolEditor::protocolTable_currentChanged(int, int)
+void clamp_protocol::ClampProtocolEditor::protocolTable_currentChanged(
+    int /*unused*/, int /*unused*/)
 {
   qWarning(
       "ProtocolEditorUI::protocolTable_currentChanged(int,int): Not "
       "implemented yet");
 }
 
-void ClampProtocolEditor::protocolTable_verticalSliderReleased(void)
+void clamp_protocol::ClampProtocolEditor::protocolTable_verticalSliderReleased()
 {
   qWarning(
-      "ProtocolEditorUI::protocolTable_verticalSliderReleased(void): Not "
+      "ProtocolEditorUI::protocolTable_verticalSliderReleased(): Not "
       "implemented yet");
 }
 
-void ClampProtocolEditor::closeEvent(QCloseEvent* event)
-{
-  emit emitCloseSignal();
-}
-Plugin::Plugin(Event::Manager* ev_manager)
-    : Widgets::Plugin(ev_manager, std::string(MODULE_NAME))
+clamp_protocol::Plugin::Plugin(Event::Manager* ev_manager)
+    : Widgets::Plugin(ev_manager, std::string(clamp_protocol::MODULE_NAME))
 {
 }
 
-Panel::Panel(QMainWindow* main_window, Event::Manager* ev_manager)
-    : Widgets::Panel(std::string(MODULE_NAME), main_window, ev_manager)
+clamp_protocol::Panel::Panel(QMainWindow* main_window,
+                             Event::Manager* ev_manager)
+    : Widgets::Panel(
+          std::string(clamp_protocol::MODULE_NAME), main_window, ev_manager)
 {
   setWhatsThis("Template Plugin");
-  createGUI(get_default_vars(), {});  // this is required to create the GUI
+  createGUI(clamp_protocol::get_default_vars(),
+            {});  // this is required to create the GUI
   resizeMe();
 }
 
-Component::Component(Widgets::Plugin* hplugin)
+clamp_protocol::Component::Component(Widgets::Plugin* hplugin)
     : Widgets::Component(hplugin,
-                         std::string(MODULE_NAME),
-                         get_default_channels(),
-                         get_default_vars())
+                         std::string(clamp_protocol::MODULE_NAME),
+                         clamp_protocol::get_default_channels(),
+                         clamp_protocol::get_default_vars())
 {
 }
 
-void Panel::initParameters(void)
+void clamp_protocol::Panel::initParameters()
 {
   time = 0;
   trial = 1;
   segmentNumber = 1;
 
   sweep = 1;
-  voltage = 0;
   intervalTime = 1000;
-  junctionPotential = 0;
 
   protocolOn = false;
   recordData = false;
@@ -1226,7 +1233,7 @@ void Panel::initParameters(void)
   plotting = false;
 }
 
-double Component::getProtocolAmplitude(int64_t current_time)
+double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
 {
   // Verify that indices are correct
   if (stepIdx >= protocol->getSegment(segmentIdx).steps.size()) {
@@ -1256,18 +1263,18 @@ double Component::getProtocolAmplitude(int64_t current_time)
   double time_elapsed_ms =
       static_cast<double>(current_time - reference_time) * 1e3;
   switch (step.stepType) {
-    case STEP: {
-      voltage_mv = step.parameters[HOLDING_LEVEL_1]
-          + step.parameters[DELTA_HOLDING_LEVEL_1] * segmentIdx;
+    case clamp_protocol::STEP: {
+      voltage_mv = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
+          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * segmentIdx;
       break;
     }
-    case RAMP: {
-      const double y2 = step.parameters[HOLDING_LEVEL_2]
-          + step.parameters[DELTA_HOLDING_LEVEL_2] * segmentIdx;
-      const double y1 = step.parameters[HOLDING_LEVEL_1]
-          + step.parameters[DELTA_HOLDING_LEVEL_1] * segmentIdx;
-      const double max_time = step.parameters[STEP_DURATION]
-          + step.parameters[DELTA_STEP_DURATION] * segmentIdx;
+    case clamp_protocol::RAMP: {
+      const double y2 = step.parameters[clamp_protocol::HOLDING_LEVEL_2]
+          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2] * segmentIdx;
+      const double y1 = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
+          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * segmentIdx;
+      const double max_time = step.parameters[clamp_protocol::STEP_DURATION]
+          + step.parameters[clamp_protocol::DELTA_STEP_DURATION] * segmentIdx;
       const double slope = (y2 - y1) / max_time;
       const double time_ms = std::min(max_time, time_elapsed_ms);
       voltage_mv = slope * time_ms;
@@ -1275,31 +1282,32 @@ double Component::getProtocolAmplitude(int64_t current_time)
     }
     default:
       ERROR_MSG(
-          "ERROR - In function ClampProtocol::execute() switch( stepType ) "
+          "ERROR - In function Panel::execute() switch( stepType ) "
           "default case called");
       break;
   }
 
-  stepIdx +=
-      time_elapsed_ms > (step.parameters[STEP_DURATION]
-                         + step.parameters[DELTA_STEP_DURATION] * segmentIdx);
+  stepIdx += static_cast<int>(
+      time_elapsed_ms
+      > (step.parameters[clamp_protocol::STEP_DURATION]
+         + step.parameters[clamp_protocol::DELTA_STEP_DURATION] * segmentIdx));
   if (plotting) {
-    data_token_t data {
+    clamp_protocol::data_token_t data {
         current_time, readinput(0), trialIdx, segmentIdx, sweepIdx, stepIdx};
-    fifo->writeRT(&data, sizeof(data_token_t));
+    fifo->writeRT(&data, sizeof(clamp_protocol::data_token_t));
   }
   return voltage_mv;
 }
 
-void Panel::customizeGUI()
+void clamp_protocol::Panel::customizeGUI()
 {
   auto* customLayout = dynamic_cast<QVBoxLayout*>(this->layout());
 
-  QGroupBox* controlGroup = new QGroupBox("Controls");
-  QVBoxLayout* controlGroupLayout = new QVBoxLayout;
+  auto* controlGroup = new QGroupBox("Controls");
+  auto* controlGroupLayout = new QVBoxLayout;
   controlGroup->setLayout(controlGroupLayout);
 
-  QHBoxLayout* toolsRow = new QHBoxLayout;
+  auto* toolsRow = new QHBoxLayout;
   loadButton = new QPushButton("Load");
   editorButton = new QPushButton("Editor");
   editorButton->setCheckable(true);
@@ -1310,7 +1318,7 @@ void Panel::customizeGUI()
   toolsRow->addWidget(viewerButton);
   controlGroupLayout->addLayout(toolsRow);
 
-  QHBoxLayout* runRow = new QHBoxLayout;
+  auto* runRow = new QHBoxLayout;
   runProtocolButton = new QPushButton(QString("RUN!!"));
   runProtocolButton->setStyleSheet("font-weight:bold;font-style:italic;");
   runProtocolButton->setCheckable(true);
@@ -1319,38 +1327,32 @@ void Panel::customizeGUI()
   runRow->addWidget(recordCheckBox);
   controlGroupLayout->addLayout(runRow);
 
-  customLayout->addWidget(controlGroup, 0, 0);
+  customLayout->addWidget(controlGroup, 0);
   setLayout(customLayout);
 
   plotTimer = new QTimer(this);
 
   QObject::connect(
-      loadButton, SIGNAL(clicked(void)), this, SLOT(loadProtocolFile(void)));
-  QObject::connect(editorButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(openProtocolEditor(void)));
-  QObject::connect(viewerButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(openProtocolWindow(void)));
-  QObject::connect(runProtocolButton,
-                   SIGNAL(clicked(void)),
-                   this,
-                   SLOT(toggleProtocol(void)));
+      loadButton, SIGNAL(clicked()), this, SLOT(loadProtocolFile()));
   QObject::connect(
-      recordCheckBox, SIGNAL(clicked(void)), this, SLOT(modify(void)));
+      editorButton, SIGNAL(clicked()), this, SLOT(openProtocolEditor()));
   QObject::connect(
-      plotTimer, SIGNAL(timeout(void)), this, SLOT(updateProtocolWindow(void)));
+      viewerButton, SIGNAL(clicked()), this, SLOT(openProtocolWindow()));
+  QObject::connect(
+      runProtocolButton, SIGNAL(clicked()), this, SLOT(toggleProtocol()));
+  QObject::connect(recordCheckBox, SIGNAL(clicked()), this, SLOT(modify()));
+  QObject::connect(
+      plotTimer, SIGNAL(timeout()), this, SLOT(updateProtocolWindow()));
 }
 
-void ClampProtocol::loadProtocolFile(void)
+void clamp_protocol::Panel::loadProtocolFile()
 {
   QString fileName = QFileDialog::getOpenFileName(
       this, "Open a Protocol File", "~/", "Clamp Protocol Files (*.csp)");
 
-  if (fileName == NULL)
+  if (fileName == nullptr) {
     return;
+  }
 
   QDomDocument doc("protocol");
   QFile file(fileName);
@@ -1377,33 +1379,38 @@ void ClampProtocol::loadProtocolFile(void)
   setComment("Protocol Name", fileName);
 }
 
-void ClampProtocol::openProtocolEditor(void)
+void clamp_protocol::Panel::openProtocolEditor()
 {
-  protocolEditor = new ClampProtocolEditor(this);
+  if (protocolEditor != nullptr) {
+    return;
+  }
+  protocolEditor = new clamp_protocol::ClampProtocolEditor(this);
   //	protocolEditor = new
   // ClampProtocolEditor(MainWindow::getInstance()->centralWidget());
   QObject::connect(protocolEditor,
                    SIGNAL(emitCloseSignal()),
                    this,
                    SLOT(closeProtocolEditor()));
-  protocolEditor->setWindowTitle(QString::number(getID()) + " Protocol Editor");
+  protocolEditor->setWindowTitle("Protocol Editor");
   protocolEditor->show();
   editorButton->setEnabled(false);
 }
 
-void ClampProtocol::closeProtocolEditor(void)
+void clamp_protocol::Panel::closeProtocolEditor()
 {
   editorButton->setEnabled(true);
   editorButton->setChecked(false);
 
   delete protocolEditor;
+  protocolEditor = nullptr;
 }
 
-void ClampProtocol::openProtocolWindow(void)
+void clamp_protocol::Panel::openProtocolWindow()
 {
-  plotWindow = new ClampProtocolWindow(this);
-  //	plotWindow = new
-  // ClampProtocolWindow(MainWindow::getInstance()->centralWidget());
+  if (plotWindow != nullptr) {
+    return;
+  }
+  plotWindow = new clamp_protocol::ClampProtocolWindow(this);
   plotWindow->show();
   QObject::connect(this,
                    SIGNAL(plotCurve(double*, curve_token_t)),
@@ -1411,17 +1418,13 @@ void ClampProtocol::openProtocolWindow(void)
                    SLOT(addCurve(double*, curve_token_t)));
   QObject::connect(
       plotWindow, SIGNAL(emitCloseSignal()), this, SLOT(closeProtocolWindow()));
-  //	plotWindowList.push_back( plotWindow );
-  plotWindow->setWindowTitle(QString::number(getID())
-                             + " Protocol Plot Window");
-  //	plotWindow->setWindowTitle( QString::number(getID()) + " Protocol Plot
-  // Window " + QString::number(plotWindowList.size()) );
+  plotWindow->setWindowTitle("Protocol Plot Window");
   plotting = true;
   plotTimer->start(100);  // 100ms refresh rate for plotting
   viewerButton->setEnabled(false);
 }
 
-void ClampProtocol::closeProtocolWindow(void)
+void clamp_protocol::Panel::closeProtocolWindow()
 {
   plotting = false;
   plotTimer->stop();
@@ -1430,27 +1433,20 @@ void ClampProtocol::closeProtocolWindow(void)
   viewerButton->setChecked(false);
 
   delete plotWindow;
+  plotWindow = nullptr;
 }
 
-void ClampProtocol::updateProtocolWindow(void)
+void clamp_protocol::Panel::updateProtocolWindow()
 {
-  curve_token_t token;
-
-  // Read from FIFO every refresh and emit plot signals if necessary
-  while (fifo.read(&token, sizeof(token), false))
-  {  // Will return 0 if fifo is empty
-    double data[token.points];
-    if (fifo.read(&data, token.points * sizeof(double)))
-      emit plotCurve(data, token);
-  }
+  constexpr size_t buffer_size = 10000;
+  std::vector<clamp_protocol::data_token_t> data;
+  data.reserve(buffer_size);
+  fifo->read(data.data(), sizeof(clamp_protocol::data_token_t) * buffer_size);
+  plotCurve(data);
 }
 
-void ClampProtocol::toggleProtocol(void)
+void clamp_protocol::Panel::toggleProtocol()
 {
-  if (pauseButton->isChecked()) {
-    return;
-  }
-
   if (runProtocolButton->isChecked()) {
     if (protocol.numSegments() == 0) {
       QMessageBox::warning(
@@ -1462,17 +1458,15 @@ void ClampProtocol::toggleProtocol(void)
       return;
     }
   }
-
-  ToggleProtocolEvent event(this, runProtocolButton->isChecked(), recordData);
-  RT::System::getInstance()->postEvent(&event);
+  protocol_state pstate = {
+      runProtocolButton->isChecked(), recording, &protocol};
+  fifo->write(&pstate, sizeof(protocol_state));
+  // ToggleProtocolEvent event(this, runProtocolButton->isChecked(),
+  // recordData); RT::System::getInstance()->postEvent(&event);
 }
 
-void ClampProtocol::foreignToggleProtocol(bool on)
+void clamp_protocol::Panel::foreignToggleProtocol(bool on)
 {
-  if (pauseButton->isChecked()) {
-    return;
-  }
-
   if (on) {
     if (protocol.numSegments() == 0) {
       QMessageBox::warning(
@@ -1485,170 +1479,392 @@ void ClampProtocol::foreignToggleProtocol(bool on)
     }
   }
 
-  ToggleProtocolEvent event(this, on, recordData);
-  RT::System::getInstance()->postEvent(&event);
+  // ToggleProtocolEvent event(this, on, recordData);
+  // RT::System::getInstance()->postEvent(&event);
 
   runProtocolButton->setChecked(on);
 }
 
-void ClampProtocol::receiveEvent(const Event::Object* event)
-{
-  if (event->getName() == Event::START_RECORDING_EVENT)
-    recording = true;
-  if (event->getName() == Event::STOP_RECORDING_EVENT)
-    recording = false;
-}
-
-void ClampProtocol::receiveEventRT(const Event::Object* event)
-{
-  if (event->getName() == Event::START_RECORDING_EVENT)
-    recording = true;
-  if (event->getName() == Event::STOP_RECORDING_EVENT)
-    recording = false;
-}
-
-void ClampProtocol::refresh(void)
-{
-  for (std::map<QString, param_t>::iterator i = parameter.begin();
-       i != parameter.end();
-       ++i)
-  {
-    if (i->second.type & (STATE | EVENT)) {
-      i->second.edit->setText(
-          QString::number(getValue(i->second.type, i->second.index)));
-      palette.setBrush(i->second.edit->foregroundRole(), Qt::darkGray);
-      i->second.edit->setPalette(palette);
-    } else if ((i->second.type & PARAMETER) && !i->second.edit->isModified()
-               && i->second.edit->text() != *i->second.str_value)
-    {
-      i->second.edit->setText(*i->second.str_value);
-    } else if ((i->second.type & COMMENT) && !i->second.edit->isModified()
-               && i->second.edit->text()
-                   != QString::fromStdString(
-                       getValueString(COMMENT, i->second.index)))
-    {
-      i->second.edit->setText(
-          QString::fromStdString(getValueString(COMMENT, i->second.index)));
-    }
-  }
-
-  if (runProtocolButton->isChecked())
-  {  // If protocol button is down / protocol running
-    if (executeMode == IDLE) {  // If protocol finished
-      runProtocolButton->setChecked(false);  // Untoggle run button
-    }
-  }
-
-  pauseButton->setChecked(!getActive());
-}
-
-void ClampProtocol::doSave(Settings::Object::State& s) const
-{
-  s.saveInteger("paused", pauseButton->isChecked());
-  if (isMaximized())
-    s.saveInteger("Maximized", 1);
-  else if (isMinimized())
-    s.saveInteger("Minimized", 1);
-
-  QPoint pos = parentWidget()->pos();
-  s.saveInteger("X", pos.x());
-  s.saveInteger("Y", pos.y());
-  s.saveInteger("W", width());
-  s.saveInteger("H", height());
-
-  for (std::map<QString, param_t>::const_iterator i = parameter.begin();
-       i != parameter.end();
-       ++i)
-    s.saveString((i->first).toStdString(),
-                 (i->second.edit->text()).toStdString());
-
-  s.saveInteger("record", recordCheckBox->isChecked());
-}
-
-void ClampProtocol::doLoad(const Settings::Object::State& s)
-{
-  for (std::map<QString, param_t>::iterator i = parameter.begin();
-       i != parameter.end();
-       ++i)
-    i->second.edit->setText(
-        QString::fromStdString(s.loadString((i->first).toStdString())));
-  if (s.loadInteger("Maximized"))
-    showMaximized();
-  else if (s.loadInteger("Minimized"))
-    showMinimized();
-  // this only exists in RTXI versions >1.3
-  if (s.loadInteger("W") != NULL) {
-    resize(s.loadInteger("W"), s.loadInteger("H"));
-    parentWidget()->move(s.loadInteger("X"), s.loadInteger("Y"));
-  }
-  if (s.loadInteger("record"))
-    recordCheckBox->setChecked(true);
-
-  pauseButton->setChecked(s.loadInteger("paused"));
-
-  QDomDocument doc("protocol");
-  QFile file(QString::fromStdString(s.loadString("Protocol Name")));
-
-  if (!file.open(QIODevice::ReadOnly)) {
-    QMessageBox::warning(this, "Error", "Unable to open file");
-    return;
-  }
-  if (!doc.setContent(&file)) {
-    QMessageBox::warning(
-        this, "Error", "Unable to set file contents to document");
-    file.close();
-    return;
-  }
-  file.close();
-
-  protocol.fromDoc(doc);
-
-  if (protocol.numSegments() <= 0) {
-    QMessageBox::warning(
-        this, "Error", "Protocol did not contain any segments");
-  }
-
-  modify();
-}
-void Component::execute()
+void clamp_protocol::Component::execute()
 {
   // This is the real-time function that will be called
   double voltage = 0.0;
   const int64_t current_time = RT::OS::getPeriod();
-  switch (this->getState()) {
+  switch (getState()) {
     case RT::State::EXEC:
       voltage = getProtocolAmplitude(current_time);
-      writeoutput(0) = (voltage + junctionPotential) * outputFactor;
+      writeoutput(0, (voltage + junctionPotential) * outputFactor);
       break;
-    case INIT:
-      period = RT::System::getInstance()->getPeriod() * 1e-9;
-      setComment("Protocol Name", "none");
-      setParameter("Interval Time", intervalTime);
-      setParameter("Number of Trials", numTrials);
-      setParameter("Liquid Junct. Potential (mV)", voltage);
-      setState("Trial", trial);
-      setState("Segment", segmentNumber);
-      setState("Sweep", sweep);
-      setState("Time (ms)", time);
-      setState("Voltage Out (V w/ LJP)", voltage);
+    case RT::State::INIT:
+      setValue(TRIAL, 0);
+      setValue(SEGMENT, 0);
+      setValue(SWEEP, 0);
+      setValue(TIME, 0);
       break;
-    case MODIFY:
-      intervalTime = getParameter("Interval Time").toDouble();
-      numTrials = getParameter("Number of Trials").toInt();
-      voltage = getParameter("Liquid Junction Potential (mv)").toDouble();
-      recordData = recordCheckBox->isChecked();
+    case RT::State::MODIFY:
+      junctionPotential = getValue<double>(LIQUID_JUNCT_POTENTIAL) * 1e-3;
+      outputFactor = getValue<double>(VOLTAGE_FACTOR);
       break;
-    case PAUSE:
-      output(0) = 0;
+    case RT::State::PAUSE:
+      writeoutput(0, 0);
       break;
-    case UNPAUSE:
+    case RT::State::UNPAUSE:
       setState(RT::State::EXEC);
       break;
-    case PERIOD:
-      period = RT::OS::getPeriod()
-          * 1e-6;  // Grabs RTXI thread period and converts to ms (from ns)
+    case RT::State::PERIOD:
       break;
   }
+}
+
+clamp_protocol::ClampProtocolWindow::ClampProtocolWindow(QWidget* parent)
+    : QWidget(parent)
+    , overlaySweeps(false)
+    , plotAfter(false)
+    , colorScheme(0)
+    , runCounter(0)
+    , sweepsShown(0)
+{
+  createGUI();
+}
+
+void clamp_protocol::ClampProtocolWindow::createGUI()
+{
+  auto* panel = dynamic_cast<Widgets::Panel*>(parentWidget());
+  QMdiArea* mdi_area = panel->getMdiWindow()->mdiArea();
+  subWindow = new QMdiSubWindow(mdi_area);
+
+  subWindow->setWindowIcon(QIcon("/usr/local/lib/rtxi/RTXI-widget-icon.png"));
+  subWindow->setWindowFlags(Qt::CustomizeWindowHint | Qt::WindowCloseButtonHint
+                            | Qt::WindowMinimizeButtonHint);
+  subWindow->setAttribute(Qt::WA_DeleteOnClose);
+
+  auto* plotWindowUILayout = new QVBoxLayout(this);
+  frame = new QFrame;
+  frameLayout = new QHBoxLayout;
+  plotWindowUILayout->addLayout(frameLayout);
+
+  // Make the top of the GUI
+  layout1 = new QGridLayout;
+  currentScaleLabel = new QLabel("Current");
+  currentScaleEdit = new QComboBox;
+  currentScaleEdit->addItem(tr("\xce\xbc\x41"));
+  currentScaleEdit->addItem(tr("nA"));
+  currentScaleEdit->addItem(tr("pA"));
+  currentScaleEdit->setCurrentIndex(1);
+  currentY1Edit = new QSpinBox;
+  currentY1Edit->setMaximum(99999);
+  currentY1Edit->setMinimum(-99999);
+  currentY1Edit->setValue(-20);
+  currentY2Edit = new QSpinBox;
+  currentY2Edit->setMaximum(99999);
+  currentY2Edit->setMinimum(-99999);
+  currentY2Edit->setValue(0);
+  layout1->addWidget(currentScaleLabel, 1, 0, 1, 1);
+  layout1->addWidget(currentY1Edit, 1, 1, 1, 1);
+  layout1->addWidget(currentY2Edit, 1, 2, 1, 1);
+  layout1->addWidget(currentScaleEdit, 1, 3, 1, 1);
+
+  timeScaleLabel = new QLabel("Time");
+  timeScaleEdit = new QComboBox;
+  timeScaleEdit->addItem(tr("s"));
+  timeScaleEdit->addItem(tr("ms"));
+  timeScaleEdit->addItem(trUtf8("\xce\xbc\x73"));
+  timeScaleEdit->addItem(tr("ns"));
+  timeScaleEdit->setCurrentIndex(1);
+  timeX1Edit = new QSpinBox;
+  timeX1Edit->setMaximum(99999);
+  timeX1Edit->setValue(0);
+  timeX2Edit = new QSpinBox;
+  timeX2Edit->setMaximum(99999);
+  timeX2Edit->setValue(1000);
+  layout1->addWidget(timeScaleLabel, 0, 0, 1, 1);
+  layout1->addWidget(timeX1Edit, 0, 1, 1, 1);
+  layout1->addWidget(timeX2Edit, 0, 2, 1, 1);
+  layout1->addWidget(timeScaleEdit, 0, 3, 1, 1);
+
+  frameLayout->addLayout(layout1);
+
+  setAxesButton = new QPushButton("Set Axes");
+  setAxesButton->setEnabled(true);
+  frameLayout->addWidget(setAxesButton);
+
+  layout2 = new QVBoxLayout;
+  overlaySweepsCheckBox = new QCheckBox("Overlay Sweeps");
+  layout2->addWidget(overlaySweepsCheckBox);
+  plotAfterCheckBox = new QCheckBox("Plot after Protocol");
+  layout2->addWidget(plotAfterCheckBox);
+  frameLayout->addLayout(layout2);
+
+  layout3 = new QVBoxLayout;
+  textLabel1 = new QLabel("Color by:");
+  colorByComboBox = new QComboBox;
+  colorByComboBox->addItem(tr("Run"));
+  colorByComboBox->addItem(tr("Trial"));
+  colorByComboBox->addItem(tr("Sweep"));
+  layout3->addWidget(textLabel1);
+  layout3->addWidget(colorByComboBox);
+  frameLayout->addLayout(layout3);
+
+  clearButton = new QPushButton("Clear");
+  frameLayout->addWidget(clearButton);
+
+  // And now the plot on the bottom...
+  plot = new BasicPlot(this);
+
+  // Add scrollview for top part of widget to allow for smaller widths
+  plot->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  plotWindowUILayout->addWidget(plot);
+
+  resize(625, 400);  // Default size
+
+  // Plot settings
+  QwtText xAxisTitle;
+  QwtText yAxisTitle;
+  xAxisTitle.setText("Time (ms)");
+  xAxisTitle.setFont(font);
+  yAxisTitle.setText("Current (nA)");
+  yAxisTitle.setFont(font);
+  plot->setAxisTitle(QwtPlot::xBottom, xAxisTitle);
+  plot->setAxisTitle(QwtPlot::yLeft, yAxisTitle);
+  setAxes();  // Set axes to defaults (1,1000)(-20,20)
+
+  auto* legend = new QwtLegend();
+  plot->insertLegend(legend, QwtPlot::RightLegend);
+
+  // Signal/Slot Connections
+  QObject::connect(setAxesButton, SIGNAL(clicked()), this, SLOT(setAxes()));
+  QObject::connect(
+      timeX1Edit, SIGNAL(valueChanged(int)), this, SLOT(setAxes()));
+  QObject::connect(
+      timeX2Edit, SIGNAL(valueChanged(int)), this, SLOT(setAxes()));
+  QObject::connect(
+      currentY1Edit, SIGNAL(valueChanged(int)), this, SLOT(setAxes()));
+  QObject::connect(
+      currentY2Edit, SIGNAL(valueChanged(int)), this, SLOT(setAxes()));
+  QObject::connect(clearButton, SIGNAL(clicked()), this, SLOT(clearPlot()));
+  QObject::connect(
+      overlaySweepsCheckBox, SIGNAL(clicked()), this, SLOT(toggleOverlay()));
+  QObject::connect(
+      plotAfterCheckBox, SIGNAL(clicked()), this, SLOT(togglePlotAfter()));
+  QObject::connect(colorByComboBox,
+                   SIGNAL(activated(int)),
+                   this,
+                   SLOT(changeColorScheme(int)));
+
+  // Add tooltip to color scheme combo box
+  QString tooltip = QString(
+                        "There are 10 colors which rotate in the same order\n")
+      + QString("Run: Change color after every protocol run\n")
+      + QString("Trial: For use when running multiple trials - A color will "
+                "correspond to a specific trial number\n")
+      + QString("Sweep: A color will correspond to a specific sweep");
+  colorByComboBox->setToolTip(
+      tooltip);  // QToolTip::add( colorByComboBox, tooltip );
+
+  subWindow->setWidget(this);
+  show();
+  subWindow->adjustSize();
+}
+
+void clamp_protocol::ClampProtocolWindow::addCurve(
+    const std::vector<data_token_t>& data)
+{  // Attach curve to plot
+
+  if (data.empty()) {
+    return;
+  }
+  QString curveTitle;
+
+  switch (colorScheme) {
+    case 0:  // Color by Run
+      if (data.back().segment > runCounter) {
+        runCounter = data.back().segment;
+      }
+      curveTitle = "Run " + QString::number(runCounter + 1);
+      break;
+    case 1:  // Color by Trial
+      if (data.back().trial > runCounter) {
+        runCounter = data.back().trial;
+      }
+      curveTitle = "Trial " + QString::number(runCounter + 1);
+      break;
+    case 2:  // Color by sweep
+      if (data.back().sweep > runCounter) {
+        runCounter = data.back().sweep;
+      }
+      curveTitle = "Sweep " + QString::number(runCounter + 1);
+      break;
+    default:
+      break;
+  }
+
+  while (curveContainer.size() < runCounter) {
+    curveContainer.push_back(new QwtPlotCurve(curveTitle));
+  }
+  QwtPlotCurvePtr curve = curveContainer.back();
+  curve->setSamples(
+      time, output, token.points);  // Makes a hard copy of both time and output
+  colorCurve(curve, idx);
+  curve->setItemAttribute(
+      QwtPlotItem::Legend,
+      legendShow);  // Set whether curve will appear on legend
+  curve->attach(plot);
+
+  if (legendShow) {
+    //		qobject_cast<QwtLegend*>(plot->legend())->legendWidgets().back()->setFont(
+    // font ); // Adjust font
+  }
+
+  if (plotAfter && !token.lastStep)  // Return before replot if plotAfter is on
+                                     // and its not last step of protocol
+    return;
+
+  plot->replot();  // Attaching curve does not refresh plot, must replot
+}
+
+void clamp_protocol::ClampProtocolWindow::colorCurve(QwtPlotCurvePtr curve,
+                                                     int idx)
+{
+  QColor color;
+
+  switch (idx) {
+    case 0:
+      color = QColor(Qt::black);
+      break;
+    case 1:
+      color = QColor(Qt::red);
+      break;
+    case 2:
+      color = QColor(Qt::blue);
+      break;
+    case 3:
+      color = QColor(Qt::green);
+      break;
+    case 4:
+      color = QColor(Qt::cyan);
+      break;
+    case 5:
+      color = QColor(Qt::magenta);
+      break;
+    case 6:
+      color = QColor(Qt::yellow);
+      break;
+    case 7:
+      color = QColor(Qt::lightGray);
+      break;
+    case 8:
+      color = QColor(Qt::darkRed);
+      break;
+    case 9:
+      color = QColor(Qt::darkGreen);
+      break;
+    default:
+      color = QColor(Qt::black);
+      break;
+  }
+
+  QPen pen(color, 2);  // Set color and width
+  curve->setPen(pen);
+}
+
+void clamp_protocol::ClampProtocolWindow::setAxes()
+{
+  double timeFactor, currentFactor;
+
+  switch (timeScaleEdit->currentIndex())
+  {  // Determine time scaling factor, convert to ms
+    case 0:
+      timeFactor = 10;  // (s)
+      break;
+    case 1:
+      timeFactor = 1;  // (ms) default
+      break;
+    case 2:
+      timeFactor = 0.1;  // (us)
+      break;
+    default:
+      timeFactor = 1;  // should never be called
+      break;
+  }
+
+  switch (currentScaleEdit->currentIndex())
+  {  // Determine current scaling factor, convert to nA
+    case 0:
+      currentFactor = 10;  // (uA)
+      break;
+    case 1:
+      currentFactor = 1;  // (nA) default
+      break;
+    case 2:
+      currentFactor = 0.1;  // (pA)
+      break;
+    default:
+      currentFactor = 1;  // shoudl never be called
+      break;
+  }
+
+  // Retrieve desired scale
+  double x1, x2, y1, y2;
+
+  x1 = timeX1Edit->value() * timeFactor;
+  x2 = timeX2Edit->value() * timeFactor;
+  y1 = currentY1Edit->value() * currentFactor;
+  y2 = currentY2Edit->value() * currentFactor;
+
+  plot->setAxes(x1, x2, y1, y2);
+}
+
+void clamp_protocol::ClampProtocolWindow::clearPlot()
+{
+  curveContainer.clear();
+  plot->replot();
+}
+
+void clamp_protocol::ClampProtocolWindow::toggleOverlay()
+{
+  if (overlaySweepsCheckBox->isChecked()) {  // Checked
+    // Check if curves are plotted, if true check if user wants plot cleared in
+    // order to overlay sweeps during next run
+    overlaySweeps = true;
+  } else {  // Unchecked
+    overlaySweeps = false;
+  }
+}
+
+void clamp_protocol::ClampProtocolWindow::togglePlotAfter()
+{
+  if (plotAfterCheckBox->isChecked())  // Checked
+    plotAfter = true;
+  else  // Unchecked
+    plotAfter = false;
+
+  plot->replot();  // Replot since curve container is cleared
+}
+
+void clamp_protocol::ClampProtocolWindow::changeColorScheme(int choice)
+{
+  if (choice == colorScheme)  // If choice is the same
+    return;
+
+  // Check if curves are plotted, if true check if user wants plot cleared in
+  // order to change color scheme
+  if (!curveContainer.empty()
+      && QMessageBox::warning(this,
+                              "Warning",
+                              "Switching the color scheme will clear the "
+                              "plot.\nDo you wish to continue?",
+                              QMessageBox::Yes | QMessageBox::Default,
+                              QMessageBox::No | QMessageBox::Escape)
+          != QMessageBox::Yes)
+  {
+    colorByComboBox->setCurrentIndex(
+        colorScheme);  // Revert to old choice if answer is no
+    return;
+  }
+
+  colorScheme = choice;
+  curveContainer.clear();
+  plot->replot();  // Replot since curve container is cleared
 }
 
 ///////// DO NOT MODIFY BELOW //////////
@@ -1659,19 +1875,19 @@ void Component::execute()
 
 std::unique_ptr<Widgets::Plugin> createRTXIPlugin(Event::Manager* ev_manager)
 {
-  return std::make_unique<Plugin>(ev_manager);
+  return std::make_unique<clamp_protocol::Plugin>(ev_manager);
 }
 
 Widgets::Panel* createRTXIPanel(QMainWindow* main_window,
                                 Event::Manager* ev_manager)
 {
-  return new Panel(main_window, ev_manager);
+  return new clamp_protocol::Panel(main_window, ev_manager);
 }
 
 std::unique_ptr<Widgets::Component> createRTXIComponent(
     Widgets::Plugin* host_plugin)
 {
-  return std::make_unique<Component>(host_plugin);
+  return std::make_unique<clamp_protocol::Component>(host_plugin);
 }
 
 Widgets::FactoryMethods fact;

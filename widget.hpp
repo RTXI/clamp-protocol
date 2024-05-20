@@ -40,11 +40,11 @@ enum PARAMETER : Widgets::Variable::Id
   INTERVAL_TIME = 0,
   NUM_OF_TRIALS,
   LIQUID_JUNCT_POTENTIAL,
+  VOLTAGE_FACTOR,
   TRIAL,
   SEGMENT,
   SWEEP,
-  TIME,
-  VOLTAGE_OUT
+  TIME
 };
 
 inline std::vector<Widgets::Variable::Info> get_default_vars()
@@ -64,6 +64,11 @@ inline std::vector<Widgets::Variable::Info> get_default_vars()
            "(mV)",
            Widgets::Variable::DOUBLE_PARAMETER,
            0.0},
+          {VOLTAGE_FACTOR,
+           "Voltage Factor",
+           "Scaling factor for output voltage",
+           Widgets::Variable::STATE,
+           uint64_t {0}},
           {TRIAL,
            "Trial",
            "Number of the trial currently being run",
@@ -83,12 +88,8 @@ inline std::vector<Widgets::Variable::Info> get_default_vars()
            "Time (ms)",
            "Elapsed time for current trial",
            Widgets::Variable::STATE,
-           uint64_t {0}},
-          {VOLTAGE_OUT,
-           "Voltage Out (V w/ LJP)",
-           "Voltage output (V)",
-           Widgets::Variable::STATE,
-           uint64_t {0}}};
+           uint64_t {0}}
+          };
 }
 
 inline std::vector<IO::channel_t> get_default_channels()
@@ -108,6 +109,7 @@ inline std::vector<IO::channel_t> get_default_channels()
 struct data_token_t
 {
   int64_t stepStart;
+  int64_t time;
   double value;
   int trial;
   int segment;
@@ -160,28 +162,22 @@ struct ProtocolSegment
 class Protocol
 {
 public:
-  // These should be private
   ProtocolSegment& getSegment(size_t seg_id);  // Return a segment
   size_t numSegments();  // Number of segments in a protocol
   size_t numSweeps(size_t seg_id);  // Number of sweeps in a segment
-  int segmentLength(size_t seg_id,
-                    double period,
-                    bool withSweeps);  // Points in a segment (w/ or w/o
-                                       // sweeps), length / period
   void setSweeps(size_t seg_id, uint32_t sweeps);  // Set sweeps for a segment
-  ProtocolStep& getStep(size_t segement,
+  ProtocolStep& getStep(size_t segment,
                         size_t step);  // Return step in a segment
   size_t numSteps(size_t segment);  // Return number of steps in segment
   void toDoc();  // Convert protocol to QDomDocument
-  void fromDoc(QDomDocument);  // Load protocol from a QDomDocument
+  void fromDoc(const QDomDocument& doc);  // Load protocol from a QDomDocument
   void clear();  // Clears container
-  // std::vector<std::vector<double>> run(
-  //     double);  // Runs the protocol, returns a time and output vector
 
   void addSegment();  // Add a segment to container
   void deleteSegment(size_t seg_id);  // Delete a segment from container
   void modifySegment(size_t seg_id, const ProtocolSegment& segment);
   void addStep(size_t seg_id);  // Add a step to a segment in container
+  void insertStep(size_t seg_id, size_t step_id);
   void deleteStep(size_t seg_id,
                   size_t step_id);  // Delete a step from segment in container
   void modifyStep(size_t seg_id, size_t step_id, const ProtocolStep& step);
@@ -196,16 +192,23 @@ private:
   std::vector<ProtocolSegment> segments;
 };  // class Protocol
 
+
+struct protocol_state{
+  bool running = false;
+  bool plotting = false;
+  clamp_protocol::Protocol* protocol = nullptr;
+};
+
+
 class ClampProtocolWindow : public QWidget
 {
   Q_OBJECT
-
 public:
   explicit ClampProtocolWindow(QWidget* /*, Panel * */);
   void createGUI();
 
 public slots:
-  void addCurve(double*, curve_token_t);
+  void addCurve(const std::vector<data_token_t>& data);
 
 private slots:
   void setAxes();
@@ -216,9 +219,8 @@ private slots:
 
 private:
   void colorCurve(QwtPlotCurve*, int);
-  void closeEvent(QCloseEvent*);
 
-  BasicPlot* plot;
+  BasicPlot* plot=nullptr;
   std::vector<QwtPlotCurve*>
       curveContainer;  // Used to hold curves to control memory allocation and
                        // deallocation
@@ -276,7 +278,7 @@ public slots:
   void clearProtocol();
   void exportProtocol();
   void previewProtocol();
-  void comboBoxChanged(QString);
+  void comboBoxChanged(const QString& string);
   virtual void protocolTable_currentChanged(int, int);
   virtual void protocolTable_verticalSliderReleased();
 
@@ -298,7 +300,6 @@ private:
   void createStep(int);
   int loadFileToProtocol(QString);
   bool protocolEmpty();
-  void closeEvent(QCloseEvent*);
 
   Protocol protocol;  // Clamp protocol
   QPushButton *saveProtocolButton, *loadProtocolButton, *exportProtocolButton,
@@ -315,7 +316,6 @@ private:
 
   QMdiSubWindow* subWindow;
 
-  int currentSegmentNumber;
   QStringList ampModeList, stepTypeList;
 
   QHBoxLayout *layout1, *layout4, *segmentSweepGroupLayout;
@@ -325,7 +325,6 @@ private:
 
 signals:
   void protocolTableScroll();
-  void emitCloseSignal();
 };
 
 // Offset from parameter index in step struct to panel's row index
@@ -355,17 +354,15 @@ public slots:
   void toggleProtocol();
 
 signals:
-  void plotCurve(double*, data_token_t);
+  void plotCurve(std::vector<data_token_t> data);
 
 private:
   std::list<ClampProtocolWindow*> plotWindowList;
 
-  double voltage, junctionPotential;
   double trial, time, sweep, segmentNumber, intervalTime;
 
   Protocol protocol;
   double stepOutput;
-  double outputFactor, inputFactor;
   double rampIncrement;
   RT::OS::Fifo* fifo;
   std::vector<double> data;
@@ -384,20 +381,6 @@ private:
   QPushButton *loadButton, *editorButton, *viewerButton, *runProtocolButton;
   ClampProtocolWindow* plotWindow;
   ClampProtocolEditor* protocolEditor;
-
-  // friend class ToggleProtocolEvent;
-  // class ToggleProtocolEvent : public RT::Event
-  //{
-  // public:
-  //   ToggleProtocolEvent(ClampProtocol*, bool, bool);
-  //   ~ToggleProtocolEvent();
-  //   int callback();
-
-  // private:
-  //   ClampProtocol* parent;
-  //   bool protocolOn;
-  //   bool recordData;
-  // };
 };
 
 class Component : public Widgets::Component
@@ -412,6 +395,9 @@ private:
   int stepIdx;
   int trialIdx;
   int numTrials;
+  double voltage;
+  double junctionPotential;
+  double outputFactor;
   int64_t reference_time=0;
   bool plotting=false;
   Protocol* protocol=nullptr;
