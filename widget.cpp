@@ -26,6 +26,7 @@
 #include <QScrollBar>
 #include <QSignalMapper>
 #include <QTimer>
+#include <cmath>
 
 #include "widget.hpp"
 
@@ -68,6 +69,68 @@ void clamp_protocol::Protocol::modifyStep(
     size_t seg_id, size_t step_id, const clamp_protocol::ProtocolStep& step)
 {
   segments.at(seg_id).steps.at(step_id) = step;
+}
+
+std::array<std::vector<double>, 2> clamp_protocol::Protocol::dryrun(
+    double period)
+{
+  std::array<std::vector<double>, 2> result;
+  int segmentIdx = 0;
+  int sweepsIdx = 0;
+  int stepIdx = 0;
+  double time_elapsed_ms = 0.0;
+  double current_time_ms = 0.0;
+  double voltage_mv = 0.0;
+  while (segmentIdx < segments.size()) {
+    while (sweepsIdx < segments.at(segmentIdx).numSweeps) {
+      while (stepIdx < segments.at(segmentIdx).steps.size())
+      {
+        ProtocolStep& step = getStep(segmentIdx, stepIdx);
+        switch (step.stepType) {
+          case clamp_protocol::STEP: {
+            voltage_mv = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
+                + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1]
+                    * sweepsIdx;
+            break;
+          }
+          case clamp_protocol::RAMP: {
+            const double y2 = step.parameters[clamp_protocol::HOLDING_LEVEL_2]
+                + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2]
+                    * sweepsIdx;
+            const double y1 = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
+                + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1]
+                    * sweepsIdx;
+            const double max_time =
+                step.parameters[clamp_protocol::STEP_DURATION]
+                + step.parameters[clamp_protocol::DELTA_STEP_DURATION]
+                    * sweepsIdx;
+            const double slope = (y2 - y1) / max_time;
+            const double time_ms = std::min(max_time, time_elapsed_ms);
+            voltage_mv = slope * time_ms;
+            break;
+          }
+          default:
+            ERROR_MSG(
+                "ERROR - In function Protocol::dryrun() switch( stepType ) "
+                "default case called");
+            return {};
+        }
+        // update parameters
+        result[0].push_back(current_time_ms);
+        result[1].push_back(voltage_mv);
+        current_time_ms += period;
+        stepIdx += static_cast<int>(
+            time_elapsed_ms
+            > (step.parameters[clamp_protocol::STEP_DURATION]
+               + step.parameters[clamp_protocol::DELTA_STEP_DURATION]
+                   * segmentIdx));
+      } // step loop
+      ++sweepsIdx;
+    } // sweep loop
+    ++segmentIdx;
+  } // segment loop
+
+  return result;
 }
 
 void clamp_protocol::Protocol::addSegment()
@@ -116,6 +179,11 @@ clamp_protocol::ProtocolStep& clamp_protocol::Protocol::getStep(size_t segment,
 size_t clamp_protocol::Protocol::numSegments()
 {
   return segments.size();
+}
+
+size_t clamp_protocol::Protocol::segmentSize(size_t seg_id)
+{
+  return segments.at(seg_id).steps.size();
 }
 
 QDomElement clamp_protocol::Protocol::stepToNode(QDomDocument& doc,
@@ -561,7 +629,7 @@ void clamp_protocol::ClampProtocolEditor::updateTable()
 
   // Load steps from current clicked segment into protocol
   int i = 0;
-  for (i = 0; i < protocol.numSteps(segmentListWidget->currentRow()); i++) {
+  for (i = 0; i < protocol.segmentSize(segmentListWidget->currentRow()); i++) {
     createStep(i);  // Update step in protocol table
   }
 }
@@ -681,7 +749,8 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
   }
 }
 
-int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(QString fileName)
+int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(
+    const QString& fileName)
 {  // Loads XML file of protocol data: updates table, listview, and protocol
    // container
   // If protocol is present, warn user that protocol will be lost upon loading
@@ -692,7 +761,9 @@ int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(QString fileName)
                               "lost.\nDo you wish to continue?",
                               QMessageBox::Yes | QMessageBox::No)
           != QMessageBox::Yes)
+  {
     return 0;  // Return if answer is no
+  }
 
   QDomDocument doc("protocol");
   QFile file(fileName);
@@ -722,12 +793,13 @@ int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(QString fileName)
   // Build segment listview
   for (int i = 0; i < protocol.numSegments(); i++) {
     QString segmentName = "Segment ";
-    if (protocol.numSegments()
-        < 10)  // To help with sorting, a zero prefix is used for single digits
+    if (protocol.numSegments() < 10)
+    {  // To help with sorting, a zero prefix is used for single digits
       segmentName += "0";
+    }
     segmentName += QString::number(i);
 
-    QListWidgetItem* element = new QListWidgetItem(
+    auto* element = new QListWidgetItem(
         segmentName, segmentListWidget);  // Add segment reference to listView
     segmentListWidget->addItem(element);
   }
@@ -749,26 +821,29 @@ QString clamp_protocol::ClampProtocolEditor::loadProtocol()
       "~/",
       "Clamp Protocol Files (*.csp);;All Files(*.*)");
 
-  if (fileName == NULL)
+  if (fileName == nullptr) {
     return "";  // Null if user cancels dialog
+  }
   clearProtocol();
   int retval = loadFileToProtocol(fileName);
 
-  if (!retval)
+  if (retval == 0) {
     return "";  // If error occurs
+  }
 
   return fileName;
 }
 
-void clamp_protocol::ClampProtocolEditor::loadProtocol(QString fileName)
+void clamp_protocol::ClampProtocolEditor::loadProtocol(const QString& fileName)
 {
   loadFileToProtocol(fileName);
 }
 
 void clamp_protocol::ClampProtocolEditor::saveProtocol()
 {  // Takes data within protocol container and converts to XML and saves to file
-  if (protocolEmpty())  // Exit if protocol is empty
+  if (protocolEmpty()) {  // Exit if protocol is empty
     return;
+  }
 
   protocol.toDoc();  // Update protocol QDomDocument
 
@@ -780,8 +855,9 @@ void clamp_protocol::ClampProtocolEditor::saveProtocol()
       "Clamp Protocol Files (*.csp);;All Files (*.*)");
 
   // If filename does not include .csp extension, add extension
-  if (!(fileName.endsWith(".csp")))
+  if (!(fileName.endsWith(".csp"))) {
     fileName.append(".csp");
+  }
 
   // If filename exists, warn user
   if (QFileInfo(fileName).exists()
@@ -790,7 +866,9 @@ void clamp_protocol::ClampProtocolEditor::saveProtocol()
                               "Do you wish to overwrite " + fileName + "?",
                               QMessageBox::Yes | QMessageBox::No)
           != QMessageBox::Yes)
+  {
     return;  // Return if answer is no
+  }
 
   // Save protocol to file
   QFile file(fileName);  // Open file
@@ -947,7 +1025,7 @@ bool clamp_protocol::ClampProtocolEditor::protocolEmpty()
     return true;
   }
 
-  if (protocol.numSteps(0) == 0) {  // Check if first segment has a step
+  if (protocol.segmentSize(0) == 0) {  // Check if first segment has a step
     QMessageBox::warning(this,
                          "Error",
                          "A protocol must contain at least one segment that "
@@ -1265,16 +1343,16 @@ double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
   switch (step.stepType) {
     case clamp_protocol::STEP: {
       voltage_mv = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
-          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * segmentIdx;
+          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * sweepIdx;
       break;
     }
     case clamp_protocol::RAMP: {
       const double y2 = step.parameters[clamp_protocol::HOLDING_LEVEL_2]
-          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2] * segmentIdx;
+          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2] * sweepIdx;
       const double y1 = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
-          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * segmentIdx;
+          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * sweepIdx;
       const double max_time = step.parameters[clamp_protocol::STEP_DURATION]
-          + step.parameters[clamp_protocol::DELTA_STEP_DURATION] * segmentIdx;
+          + step.parameters[clamp_protocol::DELTA_STEP_DURATION] * sweepIdx;
       const double slope = (y2 - y1) / max_time;
       const double time_ms = std::min(max_time, time_elapsed_ms);
       voltage_mv = slope * time_ms;
@@ -1292,10 +1370,14 @@ double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
       > (step.parameters[clamp_protocol::STEP_DURATION]
          + step.parameters[clamp_protocol::DELTA_STEP_DURATION] * segmentIdx));
   if (plotting) {
-    clamp_protocol::data_token_t data {
-        current_time, readinput(0), trialIdx, segmentIdx, sweepIdx, stepIdx};
-    fifo->writeRT(&data, sizeof(clamp_protocol::data_token_t));
-  }
+    clamp_protocol::data_token_t data {reference_time,
+                                       current_time,
+                                       readinput(0),
+                                       segmentIdx,
+                                       sweepIdx,
+                                       stepIdx};
+    fifo->writeRT(&data, sizeof(data_token_t));
+  };
   return voltage_mv;
 }
 
@@ -1496,10 +1578,10 @@ void clamp_protocol::Component::execute()
       writeoutput(0, (voltage + junctionPotential) * outputFactor);
       break;
     case RT::State::INIT:
-      setValue(TRIAL, 0);
-      setValue(SEGMENT, 0);
-      setValue(SWEEP, 0);
-      setValue(TIME, 0);
+      setValue(TRIAL, uint64_t{0});
+      setValue(SEGMENT, uint64_t{0});
+      setValue(SWEEP, uint64_t{0});
+      setValue(TIME, uint64_t{0});
       break;
     case RT::State::MODIFY:
       junctionPotential = getValue<double>(LIQUID_JUNCT_POTENTIAL) * 1e-3;
@@ -1512,6 +1594,12 @@ void clamp_protocol::Component::execute()
       setState(RT::State::EXEC);
       break;
     case RT::State::PERIOD:
+    case RT::State::EXIT:
+      break;
+    case RT::State::UNDEFINED:
+      ERROR_MSG(
+          "clamp_protocol::Component::execute : UKNOWN RT STATE! PAUSING!");
+      setState(RT::State::PAUSE);
       break;
   }
 }
@@ -1568,7 +1656,7 @@ void clamp_protocol::ClampProtocolWindow::createGUI()
   timeScaleEdit = new QComboBox;
   timeScaleEdit->addItem(tr("s"));
   timeScaleEdit->addItem(tr("ms"));
-  timeScaleEdit->addItem(trUtf8("\xce\xbc\x73"));
+  timeScaleEdit->addItem(tr("\xce\xbc\x73"));
   timeScaleEdit->addItem(tr("ns"));
   timeScaleEdit->setCurrentIndex(1);
   timeX1Edit = new QSpinBox;
@@ -1698,78 +1786,56 @@ void clamp_protocol::ClampProtocolWindow::addCurve(
       break;
   }
 
-  while (curveContainer.size() < runCounter) {
+  if (curveContainer.size() > runCounter) {
+    for (auto& curve : curveContainer) {
+      delete curve;
+    }
+    curveContainer.clear();
+    curve_data[0].clear();
+    curve_data[1].clear();
+  }
+  while (curveContainer.size() <= runCounter) {
     curveContainer.push_back(new QwtPlotCurve(curveTitle));
+    curve_data[0].emplace_back();
+    curve_data[1].emplace_back();
+    curveContainer.back()->setSamples(curve_data[0].back(),
+                                      curve_data[1].back());
+    curveContainer.back()->attach(plot);
   }
-  QwtPlotCurvePtr curve = curveContainer.back();
-  curve->setSamples(
-      time, output, token.points);  // Makes a hard copy of both time and output
-  colorCurve(curve, idx);
-  curve->setItemAttribute(
-      QwtPlotItem::Legend,
-      legendShow);  // Set whether curve will appear on legend
-  curve->attach(plot);
-
-  if (legendShow) {
-    //		qobject_cast<QwtLegend*>(plot->legend())->legendWidgets().back()->setFont(
-    // font ); // Adjust font
+  colorCurves();
+  data_token_t token {};
+  for (const auto& token : data) {
+    curve_data[0][token.sweep].push_back(
+        static_cast<double>(token.time - token.stepStart) * 1e-3);
+    curve_data[1][token.sweep].push_back(token.value);
   }
-
-  if (plotAfter && !token.lastStep)  // Return before replot if plotAfter is on
-                                     // and its not last step of protocol
-    return;
 
   plot->replot();  // Attaching curve does not refresh plot, must replot
 }
 
-void clamp_protocol::ClampProtocolWindow::colorCurve(QwtPlotCurvePtr curve,
-                                                     int idx)
+void clamp_protocol::ClampProtocolWindow::colorCurves()
 {
-  QColor color;
-
-  switch (idx) {
-    case 0:
-      color = QColor(Qt::black);
-      break;
-    case 1:
-      color = QColor(Qt::red);
-      break;
-    case 2:
-      color = QColor(Qt::blue);
-      break;
-    case 3:
-      color = QColor(Qt::green);
-      break;
-    case 4:
-      color = QColor(Qt::cyan);
-      break;
-    case 5:
-      color = QColor(Qt::magenta);
-      break;
-    case 6:
-      color = QColor(Qt::yellow);
-      break;
-    case 7:
-      color = QColor(Qt::lightGray);
-      break;
-    case 8:
-      color = QColor(Qt::darkRed);
-      break;
-    case 9:
-      color = QColor(Qt::darkGreen);
-      break;
-    default:
-      color = QColor(Qt::black);
-      break;
+  if (curveContainer.empty()) {
+    return;
   }
-
-  QPen pen(color, 2);  // Set color and width
-  curve->setPen(pen);
+  const QColor new_color(0, 0, 0, 255);
+  QPen pen(new_color, 2);  // Set color and width
+  curveContainer.back()->setPen(pen);
+  QColor older_color(255, 0, 0, 255);
+  if (curveContainer.size() == 1) {
+    return;
+  }
+  for (size_t i = curveContainer.size() - 2; i >= 0; --i) {
+    pen.setColor(older_color);
+    curveContainer.at(i)->setPen(pen);
+    older_color.setAlphaF(older_color.alphaF() / 2.0);
+  }
 }
 
 void clamp_protocol::ClampProtocolWindow::setAxes()
 {
-  double timeFactor, currentFactor;
+  double timeFactor = NAN;
+  double currentFactor = NAN;
 
   switch (timeScaleEdit->currentIndex())
   {  // Determine time scaling factor, convert to ms
@@ -1804,7 +1870,10 @@ void clamp_protocol::ClampProtocolWindow::setAxes()
   }
 
   // Retrieve desired scale
-  double x1, x2, y1, y2;
+  double x1 = NAN;
+  double x2 = NAN;
+  double y1 = NAN;
+  double y2 = NAN;
 
   x1 = timeX1Edit->value() * timeFactor;
   x2 = timeX2Edit->value() * timeFactor;
@@ -1822,29 +1891,22 @@ void clamp_protocol::ClampProtocolWindow::clearPlot()
 
 void clamp_protocol::ClampProtocolWindow::toggleOverlay()
 {
-  if (overlaySweepsCheckBox->isChecked()) {  // Checked
-    // Check if curves are plotted, if true check if user wants plot cleared in
-    // order to overlay sweeps during next run
-    overlaySweeps = true;
-  } else {  // Unchecked
-    overlaySweeps = false;
-  }
+  // Check if curves are plotted, if true check if user wants plot cleared in
+  // order to overlay sweeps during next run
+  overlaySweeps = overlaySweepsCheckBox->isChecked();
 }
 
 void clamp_protocol::ClampProtocolWindow::togglePlotAfter()
 {
-  if (plotAfterCheckBox->isChecked())  // Checked
-    plotAfter = true;
-  else  // Unchecked
-    plotAfter = false;
-
+  plotAfter = plotAfterCheckBox->isChecked();
   plot->replot();  // Replot since curve container is cleared
 }
 
 void clamp_protocol::ClampProtocolWindow::changeColorScheme(int choice)
 {
-  if (choice == colorScheme)  // If choice is the same
+  if (choice == colorScheme) {  // If choice is the same
     return;
+  }
 
   // Check if curves are plotted, if true check if user wants plot cleared in
   // order to change color scheme

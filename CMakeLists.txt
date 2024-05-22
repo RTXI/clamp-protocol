@@ -41,7 +41,7 @@ add_library(
 
 # Consult library website for how to link them to your plugin using cmake
 target_link_libraries(clamp-protocol PUBLIC 
-    rtxi::rtxi rtxi::rtxidsp rtxi::rtxigen rtxi::rtxififo Qt5::Core Qt5::Gui Qt5::Widgets 
+    rtxi::rtxi rtxi::rtxidsp rtxi::rtxiplot rtxi::rtxififo Qt5::Core Qt5::Gui Qt5::Widgets 
     dl fmt::fmt qwt::qwt Qt5::Xml
 )
 

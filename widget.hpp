@@ -26,6 +26,7 @@
 #include <qwt_plot_curve.h>
 #include <rtxi/plot/basicplot.h>
 #include <rtxi/widgets.hpp>
+#include <QVector>
 
 // This is an generated header file. You may change the namespace, but
 // make sure to do the same in implementation (.cpp) file
@@ -67,7 +68,7 @@ inline std::vector<Widgets::Variable::Info> get_default_vars()
           {VOLTAGE_FACTOR,
            "Voltage Factor",
            "Scaling factor for output voltage",
-           Widgets::Variable::STATE,
+           Widgets::Variable::UINT_PARAMETER,
            uint64_t {0}},
           {TRIAL,
            "Trial",
@@ -168,7 +169,7 @@ public:
   void setSweeps(size_t seg_id, uint32_t sweeps);  // Set sweeps for a segment
   ProtocolStep& getStep(size_t segment,
                         size_t step);  // Return step in a segment
-  size_t numSteps(size_t segment);  // Return number of steps in segment
+  size_t segmentSize(size_t seg_id);  // Return number of steps in segment
   void toDoc();  // Convert protocol to QDomDocument
   void fromDoc(const QDomDocument& doc);  // Load protocol from a QDomDocument
   void clear();  // Clears container
@@ -218,12 +219,13 @@ private slots:
   void changeColorScheme(int);
 
 private:
-  void colorCurve(QwtPlotCurve*, int);
+  void colorCurves();
 
   BasicPlot* plot=nullptr;
   std::vector<QwtPlotCurve*>
       curveContainer;  // Used to hold curves to control memory allocation and
                        // deallocation
+  std::array<std::vector<QVector<double>>, 2> curve_data;
   bool overlaySweeps;  // True: sweeps are plotted on same time scale
   bool plotAfter;  // True: only replot after a protocol has ended, False:
                    // replot after each step
@@ -274,7 +276,7 @@ public:
 
 public slots:
   QString loadProtocol();
-  void loadProtocol(QString);
+  void loadProtocol(const QString&);
   void clearProtocol();
   void exportProtocol();
   void previewProtocol();
@@ -298,7 +300,7 @@ private slots:
 
 private:
   void createStep(int);
-  int loadFileToProtocol(QString);
+  int loadFileToProtocol(const QString&);
   bool protocolEmpty();
 
   Protocol protocol;  // Clamp protocol
