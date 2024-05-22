@@ -381,8 +381,8 @@ private:
   QCheckBox* recordCheckBox;
   QLineEdit* loadFilePath;
   QPushButton *loadButton, *editorButton, *viewerButton, *runProtocolButton;
-  ClampProtocolWindow* plotWindow;
-  ClampProtocolEditor* protocolEditor;
+  ClampProtocolWindow* plotWindow=nullptr;
+  ClampProtocolEditor* protocolEditor=nullptr;
 };
 
 class Component : public Widgets::Component

@@ -83,8 +83,7 @@ std::array<std::vector<double>, 2> clamp_protocol::Protocol::dryrun(
   double voltage_mv = 0.0;
   while (segmentIdx < segments.size()) {
     while (sweepsIdx < segments.at(segmentIdx).numSweeps) {
-      while (stepIdx < segments.at(segmentIdx).steps.size())
-      {
+      while (stepIdx < segments.at(segmentIdx).steps.size()) {
         ProtocolStep& step = getStep(segmentIdx, stepIdx);
         switch (step.stepType) {
           case clamp_protocol::STEP: {
@@ -124,11 +123,11 @@ std::array<std::vector<double>, 2> clamp_protocol::Protocol::dryrun(
             > (step.parameters[clamp_protocol::STEP_DURATION]
                + step.parameters[clamp_protocol::DELTA_STEP_DURATION]
                    * segmentIdx));
-      } // step loop
+      }  // step loop
       ++sweepsIdx;
-    } // sweep loop
+    }  // sweep loop
     ++segmentIdx;
-  } // segment loop
+  }  // segment loop
 
   return result;
 }
@@ -500,7 +499,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   auto* mapper = new QSignalMapper(this);
 
   auto* comboItem = new QComboBox(protocolTable);
-  clamp_protocol::ProtocolStep step =
+  clamp_protocol::ProtocolStep& step =
       protocol.getStep(segmentListWidget->currentRow(), stepNum);
   comboItem->addItems(ampModeList);
   comboItem->setCurrentIndex(step.ampMode);
@@ -622,14 +621,15 @@ void clamp_protocol::ClampProtocolEditor::updateTableLabel()
   segmentStepLabel->setText(text);
 }
 
+// Updates protocol description table: clears and reloads table from scratch
 void clamp_protocol::ClampProtocolEditor::updateTable()
-{  // Updates protocol description table: clears and reloads table from scratch
-  protocolTable->setColumnCount(0);  // Clear table by setting columns to 0
-                                     // *Note: deletes QTableItem objects*
+{
+  protocolTable->clear();
+  ProtocolSegment& segment = protocol.getSegment(segmentListWidget->currentRow());
+  protocolTable->setColumnCount(static_cast<int>(segment.steps.size()));
 
   // Load steps from current clicked segment into protocol
-  int i = 0;
-  for (i = 0; i < protocol.segmentSize(segmentListWidget->currentRow()); i++) {
+  for (int i = 0; i < segment.steps.size(); i++) {
     createStep(i);  // Update step in protocol table
   }
 }
@@ -1087,20 +1087,14 @@ void clamp_protocol::ClampProtocolEditor::createGUI()
 
   protocolTable = new QTableWidget;
   protocolDescriptionBoxLayout->addWidget(protocolTable);
-  protocolTable->setRowCount(10);
-  protocolTable->setColumnCount(0);
 
   QStringList rowLabels =
-      (QStringList()
-       << "Amplifier Mode" << "Step Type" << "Step Duration"
-       << QString::fromUtf8("\xce\x94\x20\x53\x74\x65\x70\x20\x44\x75\x72\x61"
-                            "\x74\x69\x6f\x6e")
-       << "Hold Level 1"
-       << QString::fromUtf8("\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c"
-                            "\x65\x76\x65\x6c\x20\x31")
-       << "Hold Level 2"
-       << QString::fromUtf8("\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c"
-                            "\x65\x76\x65\x6c\x20\x32"));
+      (QStringList() << "Amplifier Mode" << "Step Type" << "Step Duration"
+                     << QString::fromUtf8("\xce\x94 Step Duration")
+                     << "Hold Level 1"
+                     << QString::fromUtf8("\xce\x94 Holding Level 1")
+                     << "Hold Level 2"
+                     << QString::fromUtf8("\xce\x94 Holding Level 2"));
 
   QStringList rowToolTips =
       (QStringList()
@@ -1116,15 +1110,12 @@ void clamp_protocol::ClampProtocolEditor::createGUI()
               "\xce\x94\x20\x48\x6f\x6c\x64\x69\x6e\x67\x20\x4c\x65\x76\x65\x6c"
               "\x20\x32\x20\x28\x6d\x56\x2f\x70\x41\x29"));
 
+  protocolTable->setRowCount(rowLabels.length());
+  protocolTable->setColumnCount(0);
   protocolTable->setVerticalHeaderLabels(rowLabels);
-  QTableWidgetItem* protocolWidgetItem = nullptr;
   for (int i = 0; i < rowLabels.length(); i++) {
-    protocolWidgetItem = protocolTable->takeVerticalHeaderItem(i);
-    protocolWidgetItem->setToolTip(rowToolTips.at(i));
-    protocolTable->setVerticalHeaderItem(i, protocolWidgetItem);
+    protocolTable->verticalHeaderItem(i)->setToolTip(rowToolTips.at(i));
   }
-  protocolWidgetItem = nullptr;
-  delete (protocolWidgetItem);
 
   protocolTable->verticalHeader()->setDefaultSectionSize(24);
   protocolTable->horizontalHeader()->setDefaultSectionSize(84);
@@ -1146,9 +1137,7 @@ void clamp_protocol::ClampProtocolEditor::createGUI()
   protocolTable->setSelectionBehavior(QAbstractItemView::SelectItems);
   protocolTable->setSelectionMode(QAbstractItemView::SingleSelection);
   protocolTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  //	protocolTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
   protocolTable->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
-  //	protocolTable->setMinimumHeight(330);//FixedHeight(400);
   protocolDescriptionBoxLayout->addWidget(protocolTable);
 
   layout3->addWidget(protocolDescriptionBox);
@@ -1285,6 +1274,7 @@ clamp_protocol::Panel::Panel(QMainWindow* main_window,
   setWhatsThis("Template Plugin");
   createGUI(clamp_protocol::get_default_vars(),
             {});  // this is required to create the GUI
+  customizeGUI();
   resizeMe();
 }
 
@@ -1410,21 +1400,34 @@ void clamp_protocol::Panel::customizeGUI()
   controlGroupLayout->addLayout(runRow);
 
   customLayout->addWidget(controlGroup, 0);
-  setLayout(customLayout);
+  // setLayout(customLayout);
 
   plotTimer = new QTimer(this);
 
-  QObject::connect(
-      loadButton, SIGNAL(clicked()), this, SLOT(loadProtocolFile()));
-  QObject::connect(
-      editorButton, SIGNAL(clicked()), this, SLOT(openProtocolEditor()));
-  QObject::connect(
-      viewerButton, SIGNAL(clicked()), this, SLOT(openProtocolWindow()));
-  QObject::connect(
-      runProtocolButton, SIGNAL(clicked()), this, SLOT(toggleProtocol()));
-  QObject::connect(recordCheckBox, SIGNAL(clicked()), this, SLOT(modify()));
-  QObject::connect(
-      plotTimer, SIGNAL(timeout()), this, SLOT(updateProtocolWindow()));
+  QObject::connect(loadButton,
+                   &QPushButton::clicked,
+                   this,
+                   &clamp_protocol::Panel::loadProtocolFile);
+  QObject::connect(editorButton,
+                   &QPushButton::clicked,
+                   this,
+                   &clamp_protocol::Panel::openProtocolEditor);
+  QObject::connect(viewerButton,
+                   &QPushButton::clicked,
+                   this,
+                   &clamp_protocol::Panel::openProtocolWindow);
+  QObject::connect(runProtocolButton,
+                   &QPushButton::clicked,
+                   this,
+                   &clamp_protocol::Panel::toggleProtocol);
+  QObject::connect(recordCheckBox,
+                   &QPushButton::clicked,
+                   this,
+                   &clamp_protocol::Panel::modify);
+  QObject::connect(plotTimer,
+                   &QTimer::timeout,
+                   this,
+                   &clamp_protocol::Panel::updateProtocolWindow);
 }
 
 void clamp_protocol::Panel::loadProtocolFile()
@@ -1464,6 +1467,7 @@ void clamp_protocol::Panel::loadProtocolFile()
 void clamp_protocol::Panel::openProtocolEditor()
 {
   if (protocolEditor != nullptr) {
+    protocolEditor->show();
     return;
   }
   protocolEditor = new clamp_protocol::ClampProtocolEditor(this);
@@ -1490,6 +1494,7 @@ void clamp_protocol::Panel::closeProtocolEditor()
 void clamp_protocol::Panel::openProtocolWindow()
 {
   if (plotWindow != nullptr) {
+    plotWindow->show();
     return;
   }
   plotWindow = new clamp_protocol::ClampProtocolWindow(this);
@@ -1578,10 +1583,10 @@ void clamp_protocol::Component::execute()
       writeoutput(0, (voltage + junctionPotential) * outputFactor);
       break;
     case RT::State::INIT:
-      setValue(TRIAL, uint64_t{0});
-      setValue(SEGMENT, uint64_t{0});
-      setValue(SWEEP, uint64_t{0});
-      setValue(TIME, uint64_t{0});
+      setValue(TRIAL, uint64_t {0});
+      setValue(SEGMENT, uint64_t {0});
+      setValue(SWEEP, uint64_t {0});
+      setValue(TIME, uint64_t {0});
       break;
     case RT::State::MODIFY:
       junctionPotential = getValue<double>(LIQUID_JUNCT_POTENTIAL) * 1e-3;
