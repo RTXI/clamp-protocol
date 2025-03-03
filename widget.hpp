@@ -16,17 +16,22 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <QCheckBox>
-#include <QComboBox>
 #include <QDomDocument>
-#include <QListWidget>
-#include <QSpinBox>
-#include <QTableWidget>
+#include <QWidget>
 
 #include <qwt_plot_curve.h>
 #include <rtxi/plot/basicplot.h>
 #include <rtxi/widgets.hpp>
-#include <QVector>
+
+class QHBoxLayout;
+class QVBoxLayout;
+class QSpacerItem;
+class QComboBox;
+class QSpinBox;
+class QCheckBox;
+class QListWidgetItem;
+class QListWidget;
+class QTableWidget;
 
 // This is an generated header file. You may change the namespace, but
 // make sure to do the same in implementation (.cpp) file
@@ -89,8 +94,7 @@ inline std::vector<Widgets::Variable::Info> get_default_vars()
            "Time (ms)",
            "Elapsed time for current trial",
            Widgets::Variable::STATE,
-           uint64_t {0}}
-          };
+           uint64_t {0}}};
 }
 
 inline std::vector<IO::channel_t> get_default_channels()
@@ -193,13 +197,12 @@ private:
   std::vector<ProtocolSegment> segments;
 };  // class Protocol
 
-
-struct protocol_state{
+struct protocol_state
+{
   bool running = false;
   bool plotting = false;
   clamp_protocol::Protocol* protocol = nullptr;
 };
-
 
 class ClampProtocolWindow : public QWidget
 {
@@ -221,7 +224,7 @@ private slots:
 private:
   void colorCurves();
 
-  BasicPlot* plot=nullptr;
+  BasicPlot* plot = nullptr;
   std::vector<QwtPlotCurve*>
       curveContainer;  // Used to hold curves to control memory allocation and
                        // deallocation
@@ -280,7 +283,7 @@ public slots:
   void clearProtocol();
   void exportProtocol();
   void previewProtocol();
-  void comboBoxChanged(const QString& string);
+  void comboBoxChanged();
   virtual void protocolTable_currentChanged(int, int);
   virtual void protocolTable_verticalSliderReleased();
 
@@ -304,26 +307,40 @@ private:
   bool protocolEmpty();
 
   Protocol protocol;  // Clamp protocol
-  QPushButton *saveProtocolButton, *loadProtocolButton, *exportProtocolButton,
-      *previewProtocolButton, *clearProtocolButton;
-  QGroupBox* protocolDescriptionBox;
-  QLabel* segmentStepLabel;
-  QTableWidget* protocolTable;
-  QPushButton *addStepButton, *insertStepButton, *deleteStepButton;
-  QGroupBox *segmentSummaryGroup, *segmentSweepGroup;
-  QLabel* segmentSweepLabel;
-  QSpinBox* segmentSweepSpinBox;
-  QListWidget* segmentListWidget;
-  QPushButton *addSegmentButton, *deleteSegmentButton;
 
-  QMdiSubWindow* subWindow;
-
-  QStringList ampModeList, stepTypeList;
-
-  QHBoxLayout *layout1, *layout4, *segmentSweepGroupLayout;
-  QVBoxLayout *windowLayout, *layout3, *protocolDescriptionBoxLayout, *layout5,
-      *segmentSummaryGroupLayout, *layout6;
   QGridLayout* layout2;
+  QGroupBox* protocolDescriptionBox = nullptr;
+  QGroupBox* segmentSummaryGroup = nullptr;
+  QGroupBox* segmentSweepGroup = nullptr;
+  QHBoxLayout* layout1 = nullptr;
+  QHBoxLayout* layout4 = nullptr;
+  QHBoxLayout* segmentSweepGroupLayout = nullptr;
+  QLabel* segmentStepLabel = nullptr;
+  QLabel* segmentSweepLabel = nullptr;
+  QListWidget* segmentListWidget = nullptr;
+  QPushButton* addSegmentButton = nullptr;
+  QPushButton* addStepButton = nullptr;
+  QPushButton* clearProtocolButton = nullptr;
+  QPushButton* deleteSegmentButton = nullptr;
+  QPushButton* deleteStepButton = nullptr;
+  QPushButton* exportProtocolButton = nullptr;
+  QPushButton* insertStepButton = nullptr;
+  QPushButton* loadProtocolButton = nullptr;
+  QPushButton* previewProtocolButton = nullptr;
+  QPushButton* saveProtocolButton = nullptr;
+  QSpinBox* segmentSweepSpinBox = nullptr;
+  QTableWidget* protocolTable = nullptr;
+  QVBoxLayout* layout3 = nullptr;
+  QVBoxLayout* layout5 = nullptr;
+  QVBoxLayout* layout6 = nullptr;
+  QVBoxLayout* protocolDescriptionBoxLayout = nullptr;
+  QVBoxLayout* segmentSummaryGroupLayout = nullptr;
+  QVBoxLayout* windowLayout = nullptr;
+
+  QMdiSubWindow* subWindow = nullptr;
+
+  QStringList ampModeList;
+  QStringList stepTypeList;
 
 signals:
   void protocolTableScroll();
@@ -366,7 +383,7 @@ private:
   Protocol protocol;
   double stepOutput;
   double rampIncrement;
-  RT::OS::Fifo* fifo;
+  RT::OS::Fifo* fifo = nullptr;
   std::vector<double> data;
 
   double prevSegmentEnd;  // Time segment ends after its first sweep
@@ -378,11 +395,14 @@ private:
   bool plotting;
   QTimer* plotTimer;
 
-  QCheckBox* recordCheckBox;
-  QLineEdit* loadFilePath;
-  QPushButton *loadButton, *editorButton, *viewerButton, *runProtocolButton;
-  ClampProtocolWindow* plotWindow=nullptr;
-  ClampProtocolEditor* protocolEditor=nullptr;
+  QCheckBox* recordCheckBox = nullptr;
+  QLineEdit* loadFilePath = nullptr;
+  QPushButton* loadButton = nullptr;
+  QPushButton* editorButton = nullptr;
+  QPushButton* viewerButton = nullptr;
+  QPushButton* runProtocolButton = nullptr;
+  ClampProtocolWindow* plotWindow = nullptr;
+  ClampProtocolEditor* protocolEditor = nullptr;
 };
 
 class Component : public Widgets::Component
@@ -390,6 +410,7 @@ class Component : public Widgets::Component
 public:
   explicit Component(Widgets::Plugin* hplugin);
   void execute() override;
+
 private:
   double getProtocolAmplitude(int64_t current_time);
   int segmentIdx;
@@ -400,9 +421,9 @@ private:
   double voltage;
   double junctionPotential;
   double outputFactor;
-  int64_t reference_time=0;
-  bool plotting=false;
-  Protocol* protocol=nullptr;
+  int64_t reference_time = 0;
+  bool plotting = false;
+  Protocol* protocol = nullptr;
   RT::OS::Fifo* fifo = nullptr;
 };
 

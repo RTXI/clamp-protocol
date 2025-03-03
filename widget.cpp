@@ -16,23 +16,36 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include <QGroupBox>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QLabel>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QScrollBar>
 #include <QSignalMapper>
+#include <QSpacerItem>
+#include <QSpinBox>
+#include <QTableWidget>
 #include <QTimer>
+#include <QVBoxLayout>
 #include <cmath>
 
 #include "widget.hpp"
 
 #include <qwt_legend.h>
 #include <rtxi/debug.hpp>
-#include <rtxi/rt.hpp>
+#include <rtxi/rtos.hpp>
+#include <rtxi/fifo.hpp>
 
 // namespace length is pretty long so this is to keep things short and sweet.
 
@@ -41,7 +54,7 @@ void clamp_protocol::Protocol::addStep(size_t seg_id)
   if (seg_id >= segments.size()) {  // If segment doesn't exist or not at end
     return;
   }
-  clamp_protocol::ProtocolSegment segment = getSegment(seg_id);
+  clamp_protocol::ProtocolSegment& segment = getSegment(seg_id);
   segment.steps.push_back({});
 }
 
@@ -417,7 +430,7 @@ void clamp_protocol::ClampProtocolEditor::deleteSegment()
 
 void clamp_protocol::ClampProtocolEditor::addStep()
 {  // Adds step to a protocol segment: updates protocol container
-  if (segmentListWidget->currentRow() != 0)
+  if (segmentListWidget->count() == 0)
   {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
@@ -496,30 +509,26 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   horizontalHeader->setText(headerLabel);
   protocolTable->setHorizontalHeaderItem(stepNum, horizontalHeader);
 
-  auto* mapper = new QSignalMapper(this);
-
   auto* comboItem = new QComboBox(protocolTable);
   clamp_protocol::ProtocolStep& step =
       protocol.getStep(segmentListWidget->currentRow(), stepNum);
   comboItem->addItems(ampModeList);
   comboItem->setCurrentIndex(step.ampMode);
-  protocolTable->setCellWidget(
-      0, stepNum, comboItem);  // Add amp mode combo box
-  connect(comboItem, SIGNAL(currentIndexChanged(int)), mapper, SLOT(map()));
-  mapper->setMapping(comboItem, QString("%1-%2").arg(0).arg(stepNum));
+  protocolTable->setCellWidget(0, stepNum, comboItem);
+  QObject::connect(comboItem,
+                   SIGNAL(currentIndexChanged(int)),
+                   this,
+                   SLOT(comboBoxChanged()));
 
   comboItem = new QComboBox(protocolTable);
   comboItem->addItems(stepTypeList);
   comboItem->setCurrentIndex(step.stepType);  // Set box to retrieved attribute
   protocolTable->setCellWidget(
       1, stepNum, comboItem);  // Add step type combo box
-  connect(comboItem, SIGNAL(currentIndexChanged(int)), mapper, SLOT(map()));
-  mapper->setMapping(comboItem, QString("%1-%2").arg(1).arg(stepNum));
-
-  connect(mapper,
-          SIGNAL(mapped(const QString&)),
-          this,
-          SLOT(comboBoxChanged(const QString&)));
+  QObject::connect(comboItem,
+                   SIGNAL(currentIndexChanged(int)),
+                   this,
+                   SLOT(comboBoxChanged()));
 
   QTableWidgetItem* item = nullptr;
   QString text;
@@ -575,11 +584,12 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   updateStepAttribute(1, stepNum);  // Update column based on step type
 }
 
-void clamp_protocol::ClampProtocolEditor::comboBoxChanged(const QString& string)
+void clamp_protocol::ClampProtocolEditor::comboBoxChanged()
 {
-  QStringList coordinates = string.split("-");
-  int row = coordinates[0].toInt();
-  int col = coordinates[1].toInt();
+  auto* sender_cell =
+      dynamic_cast<QTableWidgetItem*>(QObject::sender()->parent());
+  int row = protocolTable->row(sender_cell);
+  int col = protocolTable->column(sender_cell);
   updateStepAttribute(row, col);
 }
 
@@ -624,8 +634,9 @@ void clamp_protocol::ClampProtocolEditor::updateTableLabel()
 // Updates protocol description table: clears and reloads table from scratch
 void clamp_protocol::ClampProtocolEditor::updateTable()
 {
-  protocolTable->clear();
-  ProtocolSegment& segment = protocol.getSegment(segmentListWidget->currentRow());
+  protocolTable->clearContents();
+  ProtocolSegment& segment =
+      protocol.getSegment(segmentListWidget->currentRow());
   protocolTable->setColumnCount(static_cast<int>(segment.steps.size()));
 
   // Load steps from current clicked segment into protocol
@@ -637,10 +648,10 @@ void clamp_protocol::ClampProtocolEditor::updateTable()
 void clamp_protocol::ClampProtocolEditor::updateStepAttribute(int row, int col)
 {  // Updates protocol container when a table cell is changed
   clamp_protocol::ProtocolStep& step =
-      protocol.getStep(segmentListWidget->currentRow() - 1, col);
+      protocol.getStep(segmentListWidget->currentRow(), col);
   QComboBox* comboItem = nullptr;
   QString text;
-  QVariant val = protocolTable->item(row, col)->data(Qt::UserRole);
+  QVariant val;
 
   // Check which row and update corresponding attribute in step container
   switch (row) {
@@ -660,28 +671,34 @@ void clamp_protocol::ClampProtocolEditor::updateStepAttribute(int row, int col)
       break;
 
     case 2:
+      val = protocolTable->item(row, col)->data(Qt::UserRole);
       step.parameters.at(clamp_protocol::STEP_DURATION) = val.value<double>();
       break;
 
     case 3:
+      val = protocolTable->item(row, col)->data(Qt::UserRole);
       step.parameters.at(clamp_protocol::DELTA_STEP_DURATION) =
           val.value<double>();
       break;
 
     case 4:
+      val = protocolTable->item(row, col)->data(Qt::UserRole);
       step.parameters.at(clamp_protocol::HOLDING_LEVEL_1) = val.value<double>();
       break;
 
     case 5:
+      val = protocolTable->item(row, col)->data(Qt::UserRole);
       step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_1) =
           val.value<double>();
       break;
 
     case 6:
+      val = protocolTable->item(row, col)->data(Qt::UserRole);
       step.parameters.at(clamp_protocol::HOLDING_LEVEL_2) = val.value<double>();
       break;
 
     case 7:
+      val = protocolTable->item(row, col)->data(Qt::UserRole);
       step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_2) =
           val.value<double>();
       break;
@@ -700,8 +717,8 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
   // Disable unneeded attributes depending on step type
   // Enable needed attributes and set text to stored value
   clamp_protocol::ProtocolStep step =
-      protocol.getStep(segmentListWidget->currentRow() - 1, stepNum);
-  QTableWidgetItem* item;
+      protocol.getStep(segmentListWidget->currentRow(), stepNum);
+  QTableWidgetItem* item = nullptr;
   const QString nullentry = "---";
   switch (stepType) {
     case clamp_protocol::STEP:
