@@ -16,11 +16,11 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <QGroupBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
@@ -44,8 +44,8 @@
 
 #include <qwt_legend.h>
 #include <rtxi/debug.hpp>
-#include <rtxi/rtos.hpp>
 #include <rtxi/fifo.hpp>
+#include <rtxi/rtos.hpp>
 
 // namespace length is pretty long so this is to keep things short and sweet.
 
@@ -581,13 +581,13 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
   protocolTable->setItem(9, stepNum, item);
 
-  updateStepAttribute(1, stepNum);  // Update column based on step type
+  // updateStepAttribute(1, stepNum);  // Update column based on step type
 }
 
 void clamp_protocol::ClampProtocolEditor::comboBoxChanged()
 {
-  auto* sender_cell =
-      dynamic_cast<QTableWidgetItem*>(QObject::sender()->parent());
+  auto* box = dynamic_cast<QComboBox*>(QObject::sender());
+  auto* sender_cell = dynamic_cast<QTableWidgetItem*>(box->parent());
   int row = protocolTable->row(sender_cell);
   int col = protocolTable->column(sender_cell);
   updateStepAttribute(row, col);
@@ -1320,6 +1320,9 @@ void clamp_protocol::Panel::initParameters()
 
 double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
 {
+  if (protocol->numSegments() == 0) {
+    return 0.0;
+  }
   // Verify that indices are correct
   if (stepIdx >= protocol->getSegment(segmentIdx).steps.size()) {
     stepIdx = 0;
