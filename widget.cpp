@@ -38,7 +38,9 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
+#include <typeinfo>
 
 #include "widget.hpp"
 
@@ -107,15 +109,15 @@ std::array<std::vector<double>, 2> clamp_protocol::Protocol::dryrun(
           }
           case clamp_protocol::RAMP: {
             const double y2 = step.parameters[clamp_protocol::HOLDING_LEVEL_2]
-                + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2]
-                    * sweepsIdx;
+                + (step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2]
+                   * sweepsIdx);
             const double y1 = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
-                + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1]
-                    * sweepsIdx;
+                + (step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1]
+                   * sweepsIdx);
             const double max_time =
                 step.parameters[clamp_protocol::STEP_DURATION]
-                + step.parameters[clamp_protocol::DELTA_STEP_DURATION]
-                    * sweepsIdx;
+                + (step.parameters[clamp_protocol::DELTA_STEP_DURATION]
+                   * sweepsIdx);
             const double slope = (y2 - y1) / max_time;
             const double time_ms = std::min(max_time, time_elapsed_ms);
             voltage_mv = slope * time_ms;
@@ -555,7 +557,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
       clamp_protocol::HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(6, stepNum, item);
+  protocolTable->setItem(4, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
@@ -563,7 +565,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
       clamp_protocol::DELTA_HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(7, stepNum, item);
+  protocolTable->setItem(5, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
@@ -571,7 +573,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
       clamp_protocol::HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(8, stepNum, item);
+  protocolTable->setItem(6, stepNum, item);
 
   item = new QTableWidgetItem;
   item->setTextAlignment(Qt::AlignCenter);
@@ -579,7 +581,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
       clamp_protocol::DELTA_HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
   item->setFlags(item->flags() ^ Qt::ItemIsEditable);
-  protocolTable->setItem(9, stepNum, item);
+  protocolTable->setItem(7, stepNum, item);
 
   // updateStepAttribute(1, stepNum);  // Update column based on step type
 }
@@ -587,10 +589,19 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
 void clamp_protocol::ClampProtocolEditor::comboBoxChanged()
 {
   auto* box = dynamic_cast<QComboBox*>(QObject::sender());
-  auto* sender_cell = dynamic_cast<QTableWidgetItem*>(box->parent());
-  int row = protocolTable->row(sender_cell);
-  int col = protocolTable->column(sender_cell);
-  updateStepAttribute(row, col);
+  const int max_row = protocolTable->rowCount();
+  const int max_col = protocolTable->columnCount();
+
+  // Because Qt does not provide us with a function to find a qwidgetitem from
+  // the containing widget, we must do it ourselves.
+  for (int col = 0; col < max_col; ++col) {
+    for (int row = 0; row < max_row; ++row) {
+      if (protocolTable->cellWidget(row, col) == box) {
+        updateStepAttribute(row, col);
+        return;
+      }
+    }
+  }
 }
 
 void clamp_protocol::ClampProtocolEditor::updateSegment(
@@ -706,7 +717,7 @@ void clamp_protocol::ClampProtocolEditor::updateStepAttribute(int row, int col)
     default:
       std::cout
           << "Error - ProtocolEditor::updateStepAttribute() - default case"
-          << std::endl;
+          << '\n';
       break;
   }
 }
@@ -731,6 +742,7 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
         item->setText(nullentry);
         item->setData(Qt::UserRole, 0.0);
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+        updateStepAttribute(i + clamp_protocol::param_2_row_offset, stepNum);
       }
       for (size_t i = clamp_protocol::STEP_DURATION;
            i <= clamp_protocol::DELTA_HOLDING_LEVEL_1;
@@ -742,6 +754,7 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
             step.parameters.at(i)));  // Retrieve attribute and set text
         item->setData(Qt::UserRole, step.parameters.at(i));
         item->setFlags(item->flags() | Qt::ItemIsEditable);
+        updateStepAttribute(i + clamp_protocol::param_2_row_offset, stepNum);
       }
       break;
 
@@ -756,13 +769,11 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
             step.parameters.at(i)));  // Retrieve attribute and set text
         item->setData(Qt::UserRole, step.parameters.at(i));
         item->setFlags(item->flags() | Qt::ItemIsEditable);
+        updateStepAttribute(i + clamp_protocol::param_2_row_offset, stepNum);
       }
       break;
     default:
       break;
-  }
-  for (int i = 0; i < protocolTable->rowCount(); i++) {
-    updateStepAttribute(i, stepNum);
   }
 }
 
@@ -1358,11 +1369,11 @@ double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
     }
     case clamp_protocol::RAMP: {
       const double y2 = step.parameters[clamp_protocol::HOLDING_LEVEL_2]
-          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2] * sweepIdx;
+          + (step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_2] * sweepIdx);
       const double y1 = step.parameters[clamp_protocol::HOLDING_LEVEL_1]
-          + step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * sweepIdx;
+          + (step.parameters[clamp_protocol::DELTA_HOLDING_LEVEL_1] * sweepIdx);
       const double max_time = step.parameters[clamp_protocol::STEP_DURATION]
-          + step.parameters[clamp_protocol::DELTA_STEP_DURATION] * sweepIdx;
+          + (step.parameters[clamp_protocol::DELTA_STEP_DURATION] * sweepIdx);
       const double slope = (y2 - y1) / max_time;
       const double time_ms = std::min(max_time, time_elapsed_ms);
       voltage_mv = slope * time_ms;
@@ -1790,21 +1801,15 @@ void clamp_protocol::ClampProtocolWindow::addCurve(
 
   switch (colorScheme) {
     case 0:  // Color by Run
-      if (data.back().segment > runCounter) {
-        runCounter = data.back().segment;
-      }
+      runCounter = std::max(data.back().segment, runCounter);
       curveTitle = "Run " + QString::number(runCounter + 1);
       break;
     case 1:  // Color by Trial
-      if (data.back().trial > runCounter) {
-        runCounter = data.back().trial;
-      }
+      runCounter = std::max(data.back().trial, runCounter);
       curveTitle = "Trial " + QString::number(runCounter + 1);
       break;
     case 2:  // Color by sweep
-      if (data.back().sweep > runCounter) {
-        runCounter = data.back().sweep;
-      }
+      runCounter = std::max(data.back().sweep, runCounter);
       curveTitle = "Sweep " + QString::number(runCounter + 1);
       break;
     default:
