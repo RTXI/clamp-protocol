@@ -40,16 +40,14 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
-#include <typeinfo>
 
 #include "widget.hpp"
 
+#include <qtablewidget.h>
 #include <qwt_legend.h>
 #include <rtxi/debug.hpp>
 #include <rtxi/fifo.hpp>
 #include <rtxi/rtos.hpp>
-
-// namespace length is pretty long so this is to keep things short and sweet.
 
 void clamp_protocol::Protocol::addStep(size_t seg_id)
 {
@@ -502,9 +500,14 @@ void clamp_protocol::ClampProtocolEditor::deleteStep()
   updateTable();
 }
 
-void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
+void clamp_protocol::ClampProtocolEditor::updateColumn(
+    const clamp_protocol::ProtocolSegment& segment, int stepNum)
 {
-  protocolTable->insertColumn(stepNum);  // Insert new column
+  if (segment.steps.size() < stepNum) {
+    ERROR_MSG("Number of steps exceeded while buiding table. Aborting!");
+    return;
+  }
+  // protocolTable->insertColumn(stepNum);  // Insert new column
   QString headerLabel =
       "Step " + QString("%1").arg(stepNum);  // Make header label
   auto* horizontalHeader = new QTableWidgetItem;
@@ -539,8 +542,9 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   item->setTextAlignment(Qt::AlignCenter);
   text.setNum(step.parameters.at(
       clamp_protocol::STEP_DURATION));  // Retrieve attribute value
+  std::cout << "first value set to" << text.toStdString() << std::endl;
   item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+  item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(2, stepNum, item);
 
   item = new QTableWidgetItem;
@@ -548,7 +552,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   text.setNum(step.parameters.at(
       clamp_protocol::DELTA_STEP_DURATION));  // Retrieve attribute value
   item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+  item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(3, stepNum, item);
 
   item = new QTableWidgetItem;
@@ -556,7 +560,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   text.setNum(step.parameters.at(
       clamp_protocol::HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+  item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(4, stepNum, item);
 
   item = new QTableWidgetItem;
@@ -564,7 +568,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   text.setNum(step.parameters.at(
       clamp_protocol::DELTA_HOLDING_LEVEL_1));  // Retrieve attribute value
   item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+  item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(5, stepNum, item);
 
   item = new QTableWidgetItem;
@@ -572,7 +576,7 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   text.setNum(step.parameters.at(
       clamp_protocol::HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+  item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(6, stepNum, item);
 
   item = new QTableWidgetItem;
@@ -580,10 +584,8 @@ void clamp_protocol::ClampProtocolEditor::createStep(int stepNum)
   text.setNum(step.parameters.at(
       clamp_protocol::DELTA_HOLDING_LEVEL_2));  // Retrieve attribute value
   item->setText(text);
-  item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+  item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(7, stepNum, item);
-
-  // updateStepAttribute(1, stepNum);  // Update column based on step type
 }
 
 void clamp_protocol::ClampProtocolEditor::comboBoxChanged()
@@ -642,17 +644,14 @@ void clamp_protocol::ClampProtocolEditor::updateTableLabel()
   segmentStepLabel->setText(text);
 }
 
-// Updates protocol description table: clears and reloads table from scratch
 void clamp_protocol::ClampProtocolEditor::updateTable()
 {
-  protocolTable->clearContents();
   ProtocolSegment& segment =
       protocol.getSegment(segmentListWidget->currentRow());
-  protocolTable->setColumnCount(static_cast<int>(segment.steps.size()));
-
+  protocolTable->setColumnCount(segment.steps.size());
   // Load steps from current clicked segment into protocol
   for (int i = 0; i < segment.steps.size(); i++) {
-    createStep(i);  // Update step in protocol table
+    updateColumn(segment, i);  // Update step in protocol table
   }
 }
 
@@ -669,55 +668,26 @@ void clamp_protocol::ClampProtocolEditor::updateStepAttribute(int row, int col)
     case 0:
       // Retrieve current item of combo box and set ampMode
       comboItem = qobject_cast<QComboBox*>(protocolTable->cellWidget(row, col));
-      step.ampMode =
-          static_cast<clamp_protocol::ampMode_t>(comboItem->currentIndex());
+      comboItem->blockSignals(true);
+      comboItem->setCurrentIndex(step.ampMode);
+      comboItem->blockSignals(true);
       break;
 
     case 1:
       // Retrieve current item of combo box and set stepType
       comboItem = qobject_cast<QComboBox*>(protocolTable->cellWidget(row, col));
-      step.stepType =
-          static_cast<clamp_protocol::stepType_t>(comboItem->currentIndex());
       updateStepType(col, step.stepType);
       break;
 
     case 2:
-      val = protocolTable->item(row, col)->data(Qt::UserRole);
-      step.parameters.at(clamp_protocol::STEP_DURATION) = val.value<double>();
-      break;
-
     case 3:
-      val = protocolTable->item(row, col)->data(Qt::UserRole);
-      step.parameters.at(clamp_protocol::DELTA_STEP_DURATION) =
-          val.value<double>();
-      break;
-
     case 4:
-      val = protocolTable->item(row, col)->data(Qt::UserRole);
-      step.parameters.at(clamp_protocol::HOLDING_LEVEL_1) = val.value<double>();
-      break;
-
     case 5:
-      val = protocolTable->item(row, col)->data(Qt::UserRole);
-      step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_1) =
-          val.value<double>();
-      break;
-
     case 6:
-      val = protocolTable->item(row, col)->data(Qt::UserRole);
-      step.parameters.at(clamp_protocol::HOLDING_LEVEL_2) = val.value<double>();
-      break;
-
     case 7:
-      val = protocolTable->item(row, col)->data(Qt::UserRole);
-      step.parameters.at(clamp_protocol::DELTA_HOLDING_LEVEL_2) =
-          val.value<double>();
       break;
-
     default:
-      std::cout
-          << "Error - ProtocolEditor::updateStepAttribute() - default case"
-          << '\n';
+      ERROR_MSG("Error - ProtocolEditor::updateStepAttribute() - default case");
       break;
   }
 }
@@ -733,7 +703,7 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
   const QString nullentry = "---";
   switch (stepType) {
     case clamp_protocol::STEP:
-      for (size_t i = clamp_protocol::HOLDING_LEVEL_2;
+      for (int i = clamp_protocol::HOLDING_LEVEL_2;
            i < clamp_protocol::PROTOCOL_PARAMETERS_SIZE;
            i++)
       {
@@ -744,7 +714,7 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
         item->setFlags(item->flags() & ~Qt::ItemIsEditable);
         updateStepAttribute(i + clamp_protocol::param_2_row_offset, stepNum);
       }
-      for (size_t i = clamp_protocol::STEP_DURATION;
+      for (int i = clamp_protocol::STEP_DURATION;
            i <= clamp_protocol::DELTA_HOLDING_LEVEL_1;
            i++)
       {
@@ -759,7 +729,7 @@ void clamp_protocol::ClampProtocolEditor::updateStepType(
       break;
 
     case clamp_protocol::RAMP:
-      for (size_t i = clamp_protocol::STEP_DURATION;
+      for (int i = clamp_protocol::STEP_DURATION;
            i <= clamp_protocol::DELTA_HOLDING_LEVEL_2;
            i++)
       {
@@ -911,6 +881,22 @@ void clamp_protocol::ClampProtocolEditor::saveProtocol()
   file.close();  // Close file
 }
 
+void clamp_protocol::ClampProtocolEditor::syncTableState(QTableWidgetItem* item)
+{
+  const int row = item->row();
+  const int col = item->column();
+  if (row < 0 || col < 0) {
+    ERROR_MSG(
+        "clamp_protocol::ClampProtocolEditor::syncTableState : invalid row or "
+        "column values!");
+    return;
+  }
+  ProtocolSegment& segment =
+      protocol.getSegment(segmentListWidget->currentRow());
+  segment.steps.at(col).parameters.at(row - param_2_row_offset) =
+      item->text().toInt();
+}
+
 void clamp_protocol::ClampProtocolEditor::clearProtocol()
 {  // Clear protocol
   protocol.clear();
@@ -1038,7 +1024,8 @@ void clamp_protocol::ClampProtocolEditor::previewProtocol()
   std::array<std::vector<double>, 2> run = protocol.dryrun(0.1);
 
   auto* curve = new QwtPlotCurve("");
-  curve->setSamples(run.at(0).data(), run.at(1).data(), run.at(0).size());
+  curve->setSamples(
+      run.at(0).data(), run.at(1).data(), static_cast<int>(run.at(0).size()));
   curve->attach(plot);
   plot->replot();
 }
@@ -1225,6 +1212,10 @@ void clamp_protocol::ClampProtocolEditor::createGUI()
                    SIGNAL(itemClicked(QTableWidgetItem*)),
                    this,
                    SLOT(updateTableLabel()));
+  QObject::connect(protocolTable,
+                   &QTableWidget::itemChanged,
+                   this,
+                   &clamp_protocol::ClampProtocolEditor::syncTableState);
   QObject::connect(
       addSegmentButton, SIGNAL(clicked()), this, SLOT(addSegment()));
   QObject::connect(segmentListWidget,

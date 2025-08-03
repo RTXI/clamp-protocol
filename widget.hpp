@@ -32,6 +32,7 @@ class QCheckBox;
 class QListWidgetItem;
 class QListWidget;
 class QTableWidget;
+class QTableWidgetItem;
 
 // This is an generated header file. You may change the namespace, but
 // make sure to do the same in implementation (.cpp) file
@@ -300,9 +301,10 @@ private slots:
   void updateStepAttribute(int, int);
   void updateStepType(int, stepType_t);
   void saveProtocol();
+  void syncTableState(QTableWidgetItem* item);
 
 private:
-  void createStep(int);
+  void updateColumn(const ProtocolSegment& segment, int stepNum);
   int loadFileToProtocol(const QString&);
   bool protocolEmpty();
 
@@ -378,23 +380,27 @@ signals:
 private:
   std::list<ClampProtocolWindow*> plotWindowList;
 
-  double trial, time, sweep, segmentNumber, intervalTime;
+  uint64_t trial=0;
+  int64_t time=0;
+  uint64_t sweep=1;
+  uint64_t segmentNumber=1;
+  int64_t intervalTime=1000;
 
   Protocol protocol;
-  double stepOutput;
-  double rampIncrement;
+  double stepOutput=0.0;
+  double rampIncrement=0.0;
   RT::OS::Fifo* fifo = nullptr;
   std::vector<double> data;
 
   double prevSegmentEnd;  // Time segment ends after its first sweep
   int stepStart;  // Time when step starts divided by period
 
-  bool recordData;
-  bool protocolOn;
-  bool recording;
-  bool plotting;
-  QTimer* plotTimer;
+  bool recordData=false;
+  bool protocolOn=false;
+  bool recording=false;
+  bool plotting=false;
 
+  QTimer* plotTimer=nullptr;
   QCheckBox* recordCheckBox = nullptr;
   QLineEdit* loadFilePath = nullptr;
   QPushButton* loadButton = nullptr;
