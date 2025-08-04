@@ -131,12 +131,14 @@ std::array<std::vector<double>, 2> clamp_protocol::Protocol::dryrun(
         result[0].push_back(current_time_ms);
         result[1].push_back(voltage_mv);
         current_time_ms += period;
+        time_elapsed_ms += period;
         stepIdx += static_cast<int>(
             time_elapsed_ms
             > (step.parameters[clamp_protocol::STEP_DURATION]
                + step.parameters[clamp_protocol::DELTA_STEP_DURATION]
                    * segmentIdx));
       }  // step loop
+      time_elapsed_ms = 0.0;
       ++sweepsIdx;
     }  // sweep loop
     ++segmentIdx;
@@ -288,7 +290,8 @@ void clamp_protocol::Protocol::fromDoc(const QDomDocument& doc)
     QDomNode stepNode = segmentNode.firstChild();
 
     while (!stepNode.isNull()) {  // Step iteration
-      clamp_protocol::ProtocolStep step =
+      segments.at(segmentCount).steps.emplace_back();
+      clamp_protocol::ProtocolStep& step =
           getStep(segmentCount, stepCount);  // Retrieve step pointer
       QDomElement stepElement = stepNode.toElement();
 
@@ -542,7 +545,6 @@ void clamp_protocol::ClampProtocolEditor::updateColumn(
   item->setTextAlignment(Qt::AlignCenter);
   text.setNum(step.parameters.at(
       clamp_protocol::STEP_DURATION));  // Retrieve attribute value
-  std::cout << "first value set to" << text.toStdString() << std::endl;
   item->setText(text);
   item->setFlags(item->flags() | Qt::ItemIsEditable);
   protocolTable->setItem(2, stepNum, item);
