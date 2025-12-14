@@ -380,27 +380,27 @@ signals:
 private:
   std::list<ClampProtocolWindow*> plotWindowList;
 
-  uint64_t trial=0;
-  int64_t time=0;
-  uint64_t sweep=1;
-  uint64_t segmentNumber=1;
-  int64_t intervalTime=1000;
+  uint64_t trial = 0;
+  int64_t time = 0;
+  uint64_t sweep = 1;
+  uint64_t segmentNumber = 1;
+  int64_t intervalTime = 1000;
 
   Protocol protocol;
-  double stepOutput=0.0;
-  double rampIncrement=0.0;
+  double stepOutput = 0.0;
+  double rampIncrement = 0.0;
   RT::OS::Fifo* fifo = nullptr;
   std::vector<double> data;
 
-  double prevSegmentEnd;  // Time segment ends after its first sweep
-  int stepStart;  // Time when step starts divided by period
+  double prevSegmentEnd = 0;  // Time segment ends after its first sweep
+  int stepStart = 0;  // Time when step starts divided by period
 
-  bool recordData=false;
-  bool protocolOn=false;
-  bool recording=false;
-  bool plotting=false;
+  bool recordData = false;
+  bool protocolOn = false;
+  bool recording = false;
+  bool plotting = false;
 
-  QTimer* plotTimer=nullptr;
+  QTimer* plotTimer = nullptr;
   QCheckBox* recordCheckBox = nullptr;
   QLineEdit* loadFilePath = nullptr;
   QPushButton* loadButton = nullptr;
@@ -437,6 +437,10 @@ class Plugin : public Widgets::Plugin
 {
 public:
   explicit Plugin(Event::Manager* ev_manager);
+  RT::OS::Fifo* getFifo(){ return this->m_fifo.get(); }
+
+private:
+  std::unique_ptr<RT::OS::Fifo> m_fifo;
 };
 
 }  // namespace clamp_protocol

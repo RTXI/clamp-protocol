@@ -40,13 +40,16 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 #include "widget.hpp"
 
 #include <qtablewidget.h>
 #include <qwt_legend.h>
 #include <rtxi/debug.hpp>
+#include <rtxi/event.hpp>
 #include <rtxi/fifo.hpp>
+#include <rtxi/rt.hpp>
 #include <rtxi/rtos.hpp>
 
 void clamp_protocol::Protocol::addStep(size_t seg_id)
@@ -1285,6 +1288,9 @@ void clamp_protocol::ClampProtocolEditor::protocolTable_verticalSliderReleased()
 clamp_protocol::Plugin::Plugin(Event::Manager* ev_manager)
     : Widgets::Plugin(ev_manager, std::string(clamp_protocol::MODULE_NAME))
 {
+  if (RT::OS::getFifo(this->m_fifo, RT::OS::DEFAULT_FIFO_SIZE) != 0) {
+    throw std::runtime_error("Failed to create Fifo for clamp protocol plugin");
+  }
 }
 
 clamp_protocol::Panel::Panel(QMainWindow* main_window,
@@ -1292,7 +1298,7 @@ clamp_protocol::Panel::Panel(QMainWindow* main_window,
     : Widgets::Panel(
           std::string(clamp_protocol::MODULE_NAME), main_window, ev_manager)
 {
-  setWhatsThis("Template Plugin");
+  setWhatsThis("Clamp Protocol");
   createGUI(clamp_protocol::get_default_vars(),
             {});  // this is required to create the GUI
   customizeGUI();
@@ -1304,6 +1310,7 @@ clamp_protocol::Component::Component(Widgets::Plugin* hplugin)
                          std::string(clamp_protocol::MODULE_NAME),
                          clamp_protocol::get_default_channels(),
                          clamp_protocol::get_default_vars())
+    , fifo(dynamic_cast<clamp_protocol::Plugin*>(hplugin)->getFifo())
 {
 }
 
@@ -1524,9 +1531,9 @@ void clamp_protocol::Panel::openProtocolWindow()
   plotWindow = new clamp_protocol::ClampProtocolWindow(this);
   plotWindow->show();
   QObject::connect(this,
-                   SIGNAL(plotCurve(double*, curve_token_t)),
+                   &clamp_protocol::Panel::plotCurve,
                    plotWindow,
-                   SLOT(addCurve(double*, curve_token_t)));
+                   &clamp_protocol::ClampProtocolWindow::addCurve);
   QObject::connect(
       plotWindow, SIGNAL(emitCloseSignal()), this, SLOT(closeProtocolWindow()));
   plotWindow->setWindowTitle("Protocol Plot Window");
@@ -1558,41 +1565,32 @@ void clamp_protocol::Panel::updateProtocolWindow()
 
 void clamp_protocol::Panel::toggleProtocol()
 {
-  if (runProtocolButton->isChecked()) {
-    if (protocol.numSegments() == 0) {
-      QMessageBox::warning(
-          this,
-          "Error",
-          "There's no loaded protocol. Where could it have gone?");
-      runProtocolButton->setChecked(false);
-      protocolOn = false;
-      return;
-    }
+  if (runProtocolButton->isChecked() && protocol.numSegments() == 0) {
+    QMessageBox::warning(
+        this, "Error", "There's no loaded protocol. Where could it have gone?");
+    runProtocolButton->setChecked(false);
+    protocolOn = false;
+    this->getHostPlugin()->setComponentState(RT::State::PAUSE);
+    return;
   }
-  protocol_state pstate = {
-      runProtocolButton->isChecked(), recording, &protocol};
-  fifo->write(&pstate, sizeof(protocol_state));
-  // ToggleProtocolEvent event(this, runProtocolButton->isChecked(),
-  // recordData); RT::System::getInstance()->postEvent(&event);
+  protocolOn = !protocolOn;
+  auto paused = protocolOn ? RT::State::UNPAUSE : RT::State::PAUSE;
+  this->getHostPlugin()->setComponentState(paused);
 }
 
 void clamp_protocol::Panel::foreignToggleProtocol(bool on)
 {
-  if (on) {
-    if (protocol.numSegments() == 0) {
-      QMessageBox::warning(
-          this,
-          "Error",
-          "There's no loaded protocol. Where could it have gone?");
-      runProtocolButton->setChecked(false);
-      protocolOn = false;
-      return;
-    }
+  if (on && protocol.numSegments() == 0) {
+    QMessageBox::warning(
+        this, "Error", "There's no loaded protocol. Where could it have gone?");
+    runProtocolButton->setChecked(false);
+    protocolOn = false;
+    this->getHostPlugin()->setComponentState(RT::State::PAUSE);
+    return;
   }
-
-  // ToggleProtocolEvent event(this, on, recordData);
-  // RT::System::getInstance()->postEvent(&event);
-
+  protocolOn = on;
+  auto paused = protocolOn ? RT::State::UNPAUSE : RT::State::PAUSE;
+  this->getHostPlugin()->setComponentState(paused);
   runProtocolButton->setChecked(on);
 }
 
