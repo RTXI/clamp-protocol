@@ -454,10 +454,8 @@ void clamp_protocol::ClampProtocolEditor::addStep()
 
 void clamp_protocol::ClampProtocolEditor::insertStep()
 {  // Insert step to a protocol segment: updates protocol container
-  if (segmentListWidget->currentRow() != 0)
-  {  // If no segment exists, return and output error box
-    QMessageBox::warning(
-        this, "Error", "No segment has been created or selected.");
+  if (segmentListWidget->currentRow() < 0) {  // If no segment exists
+    QMessageBox::warning(this, "Error", "No segment has been created or selected.");
     return;
   }
 
@@ -473,10 +471,8 @@ void clamp_protocol::ClampProtocolEditor::insertStep()
 void clamp_protocol::ClampProtocolEditor::deleteStep()
 {  // Delete step from a protocol segment: updates table, listview, and protocol
    // container
-  if (segmentListWidget->currentRow() == 0)
-  {  // If no segment exists, return and output error box
-    QMessageBox::warning(
-        this, "Error", "No segment has been created or selected.");
+  if (segmentListWidget->currentRow() < 0) {  // If no segment exists
+    QMessageBox::warning(this, "Error", "No segment has been created or selected.");
     return;
   }
 
@@ -787,7 +783,7 @@ int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(
 
   protocol.fromDoc(doc);  // Translate document into protocol
 
-  if (protocol.numSegments() < 0) {
+  if (protocol.numSegments() == 0) {
     QMessageBox::warning(
         this, "Error", "Protocol did not contain any segments");
     return 0;
@@ -824,8 +820,8 @@ QString clamp_protocol::ClampProtocolEditor::loadProtocol()
       "~/",
       "Clamp Protocol Files (*.csp);;All Files(*.*)");
 
-  if (fileName == nullptr) {
-    return "";  // Null if user cancels dialog
+  if (fileName.isNull() || fileName.isEmpty()) {
+    return "";  // User cancelled dialog
   }
   clearProtocol();
   int retval = loadFileToProtocol(fileName);
@@ -973,8 +969,8 @@ void clamp_protocol::ClampProtocolEditor::exportProtocol()
     return;
   }
 
-  if (fileName == nullptr) {
-    return;  // Null if user cancels dialog
+  if (fileName.isNull() || fileName.isEmpty()) {
+    return;  // User cancelled dialog
   }
 
   // Run protocol with user specified period
@@ -1273,16 +1269,15 @@ void clamp_protocol::ClampProtocolEditor::createGUI()
 void clamp_protocol::ClampProtocolEditor::protocolTable_currentChanged(
     int /*unused*/, int /*unused*/)
 {
-  qWarning(
-      "ProtocolEditorUI::protocolTable_currentChanged(int,int): Not "
-      "implemented yet");
+  // Update the table label to reflect the currently selected cell.
+  updateTableLabel();
 }
 
 void clamp_protocol::ClampProtocolEditor::protocolTable_verticalSliderReleased()
 {
-  qWarning(
-      "ProtocolEditorUI::protocolTable_verticalSliderReleased(): Not "
-      "implemented yet");
+  // When the vertical slider is released, refresh the table label/selection
+  // so any UI state depending on the visible area is updated.
+  updateTableLabel();
 }
 
 clamp_protocol::Plugin::Plugin(Event::Manager* ev_manager)
@@ -1466,7 +1461,7 @@ void clamp_protocol::Panel::loadProtocolFile()
   QString fileName = QFileDialog::getOpenFileName(
       this, "Open a Protocol File", "~/", "Clamp Protocol Files (*.csp)");
 
-  if (fileName == nullptr) {
+  if (fileName.isNull() || fileName.isEmpty()) {
     return;
   }
 
