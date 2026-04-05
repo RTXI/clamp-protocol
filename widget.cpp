@@ -121,7 +121,7 @@ std::array<std::vector<double>, 2> clamp_protocol::Protocol::dryrun(
                    * sweepsIdx);
             const double slope = (y2 - y1) / max_time;
             const double time_ms = std::min(max_time, time_elapsed_ms);
-            voltage_mv = slope * time_ms;
+            voltage_mv = y1 + slope * time_ms;
             break;
           }
           default:
@@ -367,8 +367,8 @@ void clamp_protocol::ClampProtocolEditor::deleteSegment()
 {  // Deletes segment selected in listview: listview, protocol container, and
    // calls summary update
   int currentSegmentNumber = segmentListWidget->currentRow();
-  if (currentSegmentNumber < 0)
-  {  // If no segment exists, return and output error box
+  if (currentSegmentNumber
+      < 0) {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
     return;
@@ -386,8 +386,8 @@ void clamp_protocol::ClampProtocolEditor::deleteSegment()
     return;  // Answer is no
   }
 
-  if (protocol.numSegments() == 1)
-  {  // If only 1 segment exists, clear protocol
+  if (protocol.numSegments()
+      == 1) {  // If only 1 segment exists, clear protocol
     protocol.clear();
   } else {
     protocol.deleteSegment(currentSegmentNumber
@@ -436,8 +436,8 @@ void clamp_protocol::ClampProtocolEditor::deleteSegment()
 
 void clamp_protocol::ClampProtocolEditor::addStep()
 {  // Adds step to a protocol segment: updates protocol container
-  if (segmentListWidget->count() == 0)
-  {  // If no segment exists, return and output error box
+  if (segmentListWidget->count()
+      == 0) {  // If no segment exists, return and output error box
     QMessageBox::warning(
         this, "Error", "No segment has been created or selected.");
     return;
@@ -455,7 +455,8 @@ void clamp_protocol::ClampProtocolEditor::addStep()
 void clamp_protocol::ClampProtocolEditor::insertStep()
 {  // Insert step to a protocol segment: updates protocol container
   if (segmentListWidget->currentRow() < 0) {  // If no segment exists
-    QMessageBox::warning(this, "Error", "No segment has been created or selected.");
+    QMessageBox::warning(
+        this, "Error", "No segment has been created or selected.");
     return;
   }
 
@@ -472,7 +473,8 @@ void clamp_protocol::ClampProtocolEditor::deleteStep()
 {  // Delete step from a protocol segment: updates table, listview, and protocol
    // container
   if (segmentListWidget->currentRow() < 0) {  // If no segment exists
-    QMessageBox::warning(this, "Error", "No segment has been created or selected.");
+    QMessageBox::warning(
+        this, "Error", "No segment has been created or selected.");
     return;
   }
 
@@ -767,13 +769,13 @@ int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(
   QDomDocument doc("protocol");
   QFile file(fileName);
 
-  if (!file.open(QIODevice::ReadOnly))
-  {  // Make sure file can be opened, if not, warn user
+  if (!file.open(QIODevice::ReadOnly)) {  // Make sure file can be opened, if
+                                          // not, warn user
     QMessageBox::warning(this, "Error", "Unable to open protocol file");
     return 0;
   }
-  if (!doc.setContent(&file))
-  {  // Make sure file contents are loaded into document
+  if (!doc.setContent(
+          &file)) {  // Make sure file contents are loaded into document
     QMessageBox::warning(
         this, "Error", "Unable to set file contents to document");
     file.close();
@@ -792,8 +794,8 @@ int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(
   // Build segment listview
   for (int i = 0; i < protocol.numSegments(); i++) {
     QString segmentName = "Segment ";
-    if (protocol.numSegments() < 10)
-    {  // To help with sorting, a zero prefix is used for single digits
+    if (protocol.numSegments() < 10) {  // To help with sorting, a zero prefix
+                                        // is used for single digits
       segmentName += "0";
     }
     segmentName += QString::number(i);
@@ -805,7 +807,7 @@ int clamp_protocol::ClampProtocolEditor::loadFileToProtocol(
 
   segmentListWidget->setCurrentItem(segmentListWidget->item(0));
   updateSegment(segmentListWidget->item(0));
-
+  
   updateTable();
 
   return 1;
@@ -871,8 +873,8 @@ void clamp_protocol::ClampProtocolEditor::saveProtocol()
 
   // Save protocol to file
   QFile file(fileName);  // Open file
-  if (!file.open(QIODevice::WriteOnly))
-  {  // Open file, return error if unable to do so
+  if (!file.open(QIODevice::WriteOnly)) {  // Open file, return error if unable
+                                           // to do so
     QMessageBox::warning(
         this, "Error", "Unable to save file: Please check folder permissions.");
     return;
@@ -962,8 +964,8 @@ void clamp_protocol::ClampProtocolEditor::exportProtocol()
 
   // Save protocol to file
   QFile file(fileName);  // Open file
-  if (!file.open(QIODevice::WriteOnly))
-  {  // Open file, return error if unable to do so
+  if (!file.open(QIODevice::WriteOnly)) {  // Open file, return error if unable
+                                           // to do so
     QMessageBox::warning(
         this, "Error", "Unable to save file: Please check folder permissions.");
     return;
@@ -982,8 +984,7 @@ void clamp_protocol::ClampProtocolEditor::exportProtocol()
   QTextStream ts(&file);
 
   for (auto itx = time.begin(), ity = output.begin(); itx < time.end();
-       itx++, ity++)
-  {  // Iterate through vectors and output to file
+       itx++, ity++) {  // Iterate through vectors and output to file
     ts << *itx << " " << *ity << "\n";
   }
 
@@ -1292,6 +1293,7 @@ clamp_protocol::Panel::Panel(QMainWindow* main_window,
                              Event::Manager* ev_manager)
     : Widgets::Panel(
           std::string(clamp_protocol::MODULE_NAME), main_window, ev_manager)
+    , protocol(nullptr)
 {
   setWhatsThis("Clamp Protocol");
   createGUI(clamp_protocol::get_default_vars(),
@@ -1306,6 +1308,16 @@ clamp_protocol::Component::Component(Widgets::Plugin* hplugin)
                          clamp_protocol::get_default_channels(),
                          clamp_protocol::get_default_vars())
     , fifo(dynamic_cast<clamp_protocol::Plugin*>(hplugin)->getFifo())
+    , segmentIdx(0)
+    , sweepIdx(0)
+    , stepIdx(0)
+    , trialIdx(0)
+    , numTrials(0)
+    , voltage(0.0)
+    , junctionPotential(0.0)
+    , outputFactor(1.0)
+    , reference_time(0)
+    , plotting(false)
 {
 }
 
@@ -1326,22 +1338,22 @@ void clamp_protocol::Panel::initParameters()
 
 double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
 {
-  if (protocol->numSegments() == 0) {
+  if (protocol.numSegments() == 0) {
     return 0.0;
   }
   // Verify that indices are correct
-  if (stepIdx >= protocol->getSegment(segmentIdx).steps.size()) {
+  if (stepIdx >= protocol.getSegment(segmentIdx).steps.size()) {
     stepIdx = 0;
     ++segmentIdx;
     reference_time = current_time;
   }
 
-  if (segmentIdx >= protocol->numSegments()) {
+  if (segmentIdx >= protocol.numSegments()) {
     segmentIdx = 0;
     ++sweepIdx;
   }
 
-  if (sweepIdx >= protocol->getSegment(segmentIdx).numSweeps) {
+  if (sweepIdx >= protocol.getSegment(segmentIdx).numSweeps) {
     ++trialIdx;
     segmentIdx = 0;
   }
@@ -1352,7 +1364,7 @@ double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
   }
 
   // Setup and generate protocol output
-  auto& step = protocol->getStep(segmentIdx, stepIdx);
+  auto& step = protocol.getStep(segmentIdx, stepIdx);
   double voltage_mv = 0.0;
   double time_elapsed_ms =
       static_cast<double>(current_time - reference_time) * 1e3;
@@ -1371,7 +1383,7 @@ double clamp_protocol::Component::getProtocolAmplitude(int64_t current_time)
           + (step.parameters[clamp_protocol::DELTA_STEP_DURATION] * sweepIdx);
       const double slope = (y2 - y1) / max_time;
       const double time_ms = std::min(max_time, time_elapsed_ms);
-      voltage_mv = slope * time_ms;
+      voltage_mv = y1 + slope * time_ms;
       break;
     }
     default:
@@ -1458,6 +1470,10 @@ void clamp_protocol::Panel::customizeGUI()
 
 void clamp_protocol::Panel::loadProtocolFile()
 {
+  if(protocol == nullptr){
+    auto* hplugin = dynamic_cast<clamp_protocol::Plugin*>(this->getHostPlugin());
+    protocol = hplugin->getComponentProtocol();
+  }
   QString fileName = QFileDialog::getOpenFileName(
       this, "Open a Protocol File", "~/", "Clamp Protocol Files (*.csp)");
 
@@ -1479,10 +1495,13 @@ void clamp_protocol::Panel::loadProtocolFile()
     return;
   }
   file.close();
+  auto* hplugin = dynamic_cast<clamp_protocol::Plugin*>(this->getHostPlugin());
+  // The current design is now refactored so the component owns the
+  // protocol data, and the panel holds a reference to it.
+  hplugin->setComponentState(RT::State::PAUSE);
+  protocol->fromDoc(doc);
 
-  protocol.fromDoc(doc);
-
-  if (protocol.numSegments() <= 0) {
+  if (protocol->numSegments() <= 0) {
     QMessageBox::warning(
         this, "Error", "Protocol did not contain any segments");
   }
@@ -1496,6 +1515,7 @@ void clamp_protocol::Panel::openProtocolEditor()
     protocolEditor->show();
     return;
   }
+
   protocolEditor = new clamp_protocol::ClampProtocolEditor(this);
   //	protocolEditor = new
   // ClampProtocolEditor(MainWindow::getInstance()->centralWidget());
@@ -1553,14 +1573,21 @@ void clamp_protocol::Panel::updateProtocolWindow()
 {
   constexpr size_t buffer_size = 10000;
   std::vector<clamp_protocol::data_token_t> data;
-  data.reserve(buffer_size);
-  fifo->read(data.data(), sizeof(clamp_protocol::data_token_t) * buffer_size);
-  plotCurve(data);
+  data.resize(buffer_size);
+    if (fifo == nullptr) {
+    fifo = dynamic_cast<clamp_protocol::Plugin*>(this->getHostPlugin())->getFifo();
+    return;
+  }
+  int64_t num_bytes_read = fifo->read(data.data(), sizeof(clamp_protocol::data_token_t) * buffer_size);
+  if (num_bytes_read > 0) {
+    data.resize(num_bytes_read / sizeof(clamp_protocol::data_token_t));
+    plotCurve(data);
+  }
 }
 
 void clamp_protocol::Panel::toggleProtocol()
 {
-  if (runProtocolButton->isChecked() && protocol.numSegments() == 0) {
+  if (runProtocolButton->isChecked() && protocol->numSegments() == 0) {
     QMessageBox::warning(
         this, "Error", "There's no loaded protocol. Where could it have gone?");
     runProtocolButton->setChecked(false);
@@ -1575,7 +1602,7 @@ void clamp_protocol::Panel::toggleProtocol()
 
 void clamp_protocol::Panel::foreignToggleProtocol(bool on)
 {
-  if (on && protocol.numSegments() == 0) {
+  if (on && protocol->numSegments() == 0) {
     QMessageBox::warning(
         this, "Error", "There's no loaded protocol. Where could it have gone?");
     runProtocolButton->setChecked(false);
@@ -1853,8 +1880,9 @@ void clamp_protocol::ClampProtocolWindow::setAxes()
   double timeFactor = NAN;
   double currentFactor = NAN;
 
-  switch (timeScaleEdit->currentIndex())
-  {  // Determine time scaling factor, convert to ms
+  switch (
+      timeScaleEdit
+          ->currentIndex()) {  // Determine time scaling factor, convert to ms
     case 0:
       timeFactor = 10;  // (s)
       break;
@@ -1869,8 +1897,8 @@ void clamp_protocol::ClampProtocolWindow::setAxes()
       break;
   }
 
-  switch (currentScaleEdit->currentIndex())
-  {  // Determine current scaling factor, convert to nA
+  switch (currentScaleEdit->currentIndex()) {  // Determine current scaling
+                                               // factor, convert to nA
     case 0:
       currentFactor = 10;  // (uA)
       break;

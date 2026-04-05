@@ -386,7 +386,7 @@ private:
   uint64_t segmentNumber = 1;
   int64_t intervalTime = 1000;
 
-  Protocol protocol;
+  Protocol* protocol = nullptr;
   double stepOutput = 0.0;
   double rampIncrement = 0.0;
   RT::OS::Fifo* fifo = nullptr;
@@ -416,6 +416,8 @@ class Component : public Widgets::Component
 public:
   explicit Component(Widgets::Plugin* hplugin);
   void execute() override;
+  Protocol* getProtocol() { return &this->protocol; }
+  void setProtocol(Protocol* prot) { this->protocol = *prot; }
 
 private:
   double getProtocolAmplitude(int64_t current_time);
@@ -429,7 +431,7 @@ private:
   double outputFactor;
   int64_t reference_time = 0;
   bool plotting = false;
-  Protocol* protocol = nullptr;
+  Protocol protocol;
   RT::OS::Fifo* fifo = nullptr;
 };
 
@@ -438,6 +440,9 @@ class Plugin : public Widgets::Plugin
 public:
   explicit Plugin(Event::Manager* ev_manager);
   RT::OS::Fifo* getFifo(){ return this->m_fifo.get(); }
+  Protocol* getComponentProtocol() { 
+    return dynamic_cast<clamp_protocol::Component*>(this->getComponent())->getProtocol();
+  }
 
 private:
   std::unique_ptr<RT::OS::Fifo> m_fifo;
